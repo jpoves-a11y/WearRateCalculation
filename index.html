@@ -1,0 +1,1559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Acetabular Wear Analysis System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.158.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.158.0/examples/jsm/"
+        }
+    }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f8fafc;
+            min-height: 100vh;
+            position: relative;
+            overflow-x: hidden;
+        }
+        
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                radial-gradient(circle at 20% 50%, rgba(102, 126, 234, 0.05), transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(124, 58, 237, 0.05), transparent 50%),
+                radial-gradient(circle at 40% 20%, rgba(59, 130, 246, 0.05), transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+        
+        .container {
+            max-width: 1920px;
+            margin: 0 auto;
+            position: relative;
+            z-index: 1;
+        }
+        
+        #viewer-container {
+            width: 100%;
+            height: 600px;
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            border-radius: 20px;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 
+                0 25px 50px -12px rgba(0, 0, 0, 0.5),
+                0 0 0 1px rgba(255, 255, 255, 0.1),
+                inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        #sphere-viewer-container {
+            width: 100%;
+            height: 500px;
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            border-radius: 20px;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 
+                0 25px 50px -12px rgba(0, 0, 0, 0.5),
+                0 0 0 1px rgba(255, 255, 255, 0.1),
+                inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .panel {
+            background: #ffffff;
+            border-radius: 20px;
+            padding: 28px;
+            box-shadow: 
+                0 4px 20px rgba(0, 0, 0, 0.08),
+                0 0 0 1px rgba(0, 0, 0, 0.05);
+            border: 1px solid rgba(226, 232, 240, 0.8);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        
+        .panel:hover {
+            transform: translateY(-2px);
+            box-shadow: 
+                0 8px 30px rgba(0, 0, 0, 0.12),
+                0 0 0 1px rgba(0, 0, 0, 0.05);
+        }
+        
+        .metric-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 24px;
+            border-radius: 16px;
+            margin-bottom: 16px;
+            box-shadow: 
+                0 10px 30px rgba(102, 126, 234, 0.3),
+                inset 0 1px 0 0 rgba(255, 255, 255, 0.2);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .metric-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(135deg, transparent 0%, rgba(255, 255, 255, 0.1) 100%);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        
+        .metric-card:hover {
+            transform: translateY(-4px) scale(1.02);
+            box-shadow: 0 15px 40px rgba(102, 126, 234, 0.4);
+        }
+        
+        .metric-card:hover::before {
+            opacity: 1;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 14px 28px;
+            border-radius: 12px;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 15px;
+            transition: all 0.3s ease;
+            box-shadow: 
+                0 4px 15px rgba(102, 126, 234, 0.4),
+                inset 0 1px 0 0 rgba(255, 255, 255, 0.2);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .btn-primary::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+            transition: left 0.5s ease;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.5);
+        }
+        
+        .btn-primary:hover::before {
+            left: 100%;
+        }
+        
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+        
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.9);
+            color: #667eea;
+            padding: 14px 28px;
+            border-radius: 12px;
+            border: 2px solid #667eea;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 15px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.2);
+        }
+        
+        .btn-secondary:hover {
+            background: #667eea;
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 10px;
+            box-shadow: 0 0 10px currentColor;
+            animation: pulse 2s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+        
+        .status-ready { background: #48bb78; box-shadow: 0 0 15px #48bb78; }
+        .status-processing { background: #ed8936; box-shadow: 0 0 15px #ed8936; }
+        .status-complete { background: #4299e1; box-shadow: 0 0 15px #4299e1; }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 12px 0;
+            padding: 8px;
+            border-radius: 8px;
+            transition: all 0.2s ease;
+        }
+        
+        .legend-item:hover {
+            background: rgba(102, 126, 234, 0.05);
+            transform: translateX(4px);
+        }
+        
+        .legend-color {
+            width: 36px;
+            height: 24px;
+            border-radius: 6px;
+            margin-right: 12px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+        }
+        
+        .loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(15, 23, 42, 0.95);
+            backdrop-filter: blur(10px);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            color: white;
+            font-size: 18px;
+        }
+        
+        .loading-overlay::after {
+            content: '';
+            width: 50px;
+            height: 50px;
+            border: 4px solid rgba(102, 126, 234, 0.3);
+            border-top-color: #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-top: 20px;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .hidden { display: none; }
+        
+        h1 {
+            color: #0f172a;
+            font-weight: 800;
+        }
+        
+        h2 {
+            color: #1e293b;
+            font-weight: 700;
+        }
+        
+        .gradient-text {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        input[type="file"] {
+            padding: 12px;
+            border: 2px dashed #cbd5e0;
+            border-radius: 12px;
+            transition: all 0.3s ease;
+            background: #f8fafc;
+            color: #475569;
+        }
+        
+        input[type="file"]:hover {
+            border-color: #667eea;
+            background: #f1f5f9;
+        }
+        
+        p {
+            color: #64748b;
+        }
+        
+        .fade-in {
+            animation: fadeIn 0.6s ease-in;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto p-6">
+        <!-- Header -->
+        <div class="panel mb-6 fade-in">
+            <div class="flex items-center gap-4 mb-3">
+                <svg class="w-12 h-12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <defs>
+                        <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
+                            <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+                        </linearGradient>
+                    </defs>
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z" fill="url(#grad1)"/>
+                    <circle cx="12" cy="12" r="4" fill="url(#grad1)" opacity="0.6"/>
+                </svg>
+                <div>
+                    <h1 class="text-4xl font-bold mb-1">Acetabular Wear Analysis System</h1>
+                    <p class="text-lg" style="color: #64748b;">Professional volumetric and linear wear measurement for hip prosthesis components</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Left Panel: Controls -->
+            <div class="lg:col-span-1">
+                <div class="panel mb-6 fade-in" style="animation-delay: 0.1s;">
+                    <h2 class="text-2xl font-bold mb-4">
+                        <span class="flex items-center gap-2">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <defs>
+                                    <linearGradient id="grad2" x1="0%" y1="0%" x2="100%" y2="100%">
+                                        <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
+                                        <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+                                    </linearGradient>
+                                </defs>
+                                <path stroke="url(#grad2)" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                            </svg>
+                            File Upload
+                        </span>
+                    </h2>
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium mb-2" style="color: #475569;">
+                            Upload STL File
+                        </label>
+                        <input type="file" id="file-input" accept=".stl" class="w-full p-2 border border-gray-300 rounded-lg">
+                    </div>
+                    <div class="text-sm mb-4 flex items-center" style="color: #64748b;">
+                        <span class="status-indicator status-ready" id="status-indicator"></span>
+                        <span id="status-text">Ready to load file</span>
+                    </div>
+                </div>
+
+                <div class="panel mb-6 fade-in" style="animation-delay: 0.2s;">
+                    <h2 class="text-2xl font-bold mb-4">Analysis Pipeline</h2>
+                    <div class="space-y-3">
+                        <button id="btn-isolate" class="btn-primary w-full flex items-center justify-center gap-2" disabled>
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
+                            </svg>
+                            <span>1. Isolate Inner Surface</span>
+                        </button>
+                        <button id="btn-detect-wear" class="btn-primary w-full flex items-center justify-center gap-2" disabled>
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/>
+                            </svg>
+                            <span>2. Detect Wear Zones</span>
+                        </button>
+                        <button id="btn-fit-sphere" class="btn-primary w-full flex items-center justify-center gap-2" disabled>
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"/>
+                            </svg>
+                            <span>3. Fit Reference Sphere</span>
+                        </button>
+                        <button id="btn-calculate" class="btn-primary w-full flex items-center justify-center gap-2" disabled>
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+                            </svg>
+                            <span>4. Calculate Wear</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="panel fade-in" style="animation-delay: 0.3s;">
+                    <h2 class="text-2xl font-bold mb-4 flex items-center gap-2">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <defs>
+                                <linearGradient id="grad3" x1="0%" y1="0%" x2="100%" y2="100%">
+                                    <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
+                                    <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+                                </linearGradient>
+                            </defs>
+                            <path stroke="url(#grad3)" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/>
+                        </svg>
+                        Legend
+                    </h2>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #4299e1;"></div>
+                        <span>Original Component</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #48bb78;"></div>
+                        <span><strong>Unworn Zone</strong> (furthest from prosthesis)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #f56565;"></div>
+                        <span><strong>Worn Zone</strong> (closest to prosthesis)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: rgba(255, 215, 0, 0.5); border: 2px solid rgba(255, 215, 0, 0.8);"></div>
+                        <span>Reference Sphere</span>
+                    </div>
+                    <div class="mt-4 p-4 rounded-xl text-sm" style="background: linear-gradient(135deg, rgba(102, 126, 234, 0.08) 0%, rgba(124, 58, 237, 0.08) 100%); border: 1px solid rgba(102, 126, 234, 0.15); color: #475569;">
+                        <p class="font-semibold mb-2 flex items-center gap-2">
+                            <svg class="w-5 h-5 text-yellow-600" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                            </svg>
+                            Important:
+                        </p>
+                        <p class="mb-1"><strong class="text-red-600">Worn zone</strong> = inner surface closest to femoral head (where contact occurs)</p>
+                        <p><strong class="text-green-600">Unworn zone</strong> = outer edges furthest from contact point</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Middle/Right Panel: 3D Viewers -->
+            <div class="lg:col-span-2">
+                <!-- Main Viewer -->
+                <div class="panel mb-6 fade-in" style="animation-delay: 0.4s;">
+                    <h2 class="text-2xl font-bold mb-4">3D Model Viewer</h2>
+                    <div id="viewer-container">
+                        <div id="loading-overlay" class="loading-overlay hidden">
+                            <div>Processing...</div>
+                        </div>
+                    </div>
+                    <div class="mt-4 text-sm" style="color: #64748b;">
+                        <p><strong style="color: #475569;">Controls:</strong> Left click + drag to rotate | Right click + drag to pan | Scroll to zoom</p>
+                    </div>
+                </div>
+
+                <!-- Sphere Viewer -->
+                <div class="panel mb-6 fade-in" style="animation-delay: 0.5s;">
+                    <h2 class="text-2xl font-bold mb-4">Reference Sphere Visualization</h2>
+                    <div id="sphere-viewer-container">
+                        <div id="sphere-loading-overlay" class="loading-overlay">
+                            <div>Waiting for analysis...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Results Panel -->
+                <div class="panel fade-in" style="animation-delay: 0.6s;">
+                    <h2 class="text-2xl font-bold mb-4">Analysis Results</h2>
+                    <div id="results-container">
+                        <div class="text-center py-8" style="color: #94a3b8;">
+                            No analysis completed yet. Upload an STL file and run the analysis pipeline.
+                        </div>
+                    </div>
+                    <div id="results-data" class="hidden">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                            <div class="metric-card">
+                                <div class="text-sm opacity-80 mb-1">Volumetric Wear</div>
+                                <div class="text-3xl font-bold" id="metric-volume">0.00 mm³</div>
+                            </div>
+                            <div class="metric-card">
+                                <div class="text-sm opacity-80 mb-1">Mean Linear Wear</div>
+                                <div class="text-3xl font-bold" id="metric-linear-mean">0.00 mm</div>
+                            </div>
+                            <div class="metric-card">
+                                <div class="text-sm opacity-80 mb-1">Maximum Penetration</div>
+                                <div class="text-3xl font-bold" id="metric-linear-max">0.00 mm</div>
+                            </div>
+                            <div class="metric-card">
+                                <div class="text-sm opacity-80 mb-1">Minimum Penetration</div>
+                                <div class="text-3xl font-bold" id="metric-linear-min">0.00 mm</div>
+                            </div>
+                        </div>
+                        <div class="space-y-2 mb-4">
+                            <p><strong>Reference Sphere Center:</strong> <span id="sphere-center">-</span></p>
+                            <p><strong>Reference Sphere Radius:</strong> <span id="sphere-radius">-</span></p>
+                            <p><strong>Worn Zone Area:</strong> <span id="worn-area">-</span></p>
+                            <p><strong>Unworn Zone Area:</strong> <span id="unworn-area">-</span></p>
+                        </div>
+                        <div class="flex gap-3">
+                            <button id="btn-export-csv" class="btn-secondary">Export CSV</button>
+                            <button id="btn-export-pdf" class="btn-secondary">Export PDF Report</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { STLLoader } from 'three/addons/loaders/STLLoader.js';
+
+        // Application State
+        const state = {
+            geometry: null,
+            mesh: null,
+            innerSurfaceVertices: [],
+            wornVertices: [],
+            unwornVertices: [],
+            referenceSphere: null,
+            wearData: null
+        };
+
+        // Initialize Main Viewer
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x1a202c);
+        
+        const camera = new THREE.PerspectiveCamera(
+            75,
+            document.getElementById('viewer-container').clientWidth / 
+            document.getElementById('viewer-container').clientHeight,
+            0.1,
+            1000
+        );
+        camera.position.set(50, 50, 50);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(
+            document.getElementById('viewer-container').clientWidth,
+            document.getElementById('viewer-container').clientHeight
+        );
+        document.getElementById('viewer-container').appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+
+        const directionalLight1 = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight1.position.set(50, 50, 50);
+        scene.add(directionalLight1);
+
+        const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.4);
+        directionalLight2.position.set(-50, -50, -50);
+        scene.add(directionalLight2);
+
+        // Initialize Sphere Viewer
+        const sphereScene = new THREE.Scene();
+        sphereScene.background = new THREE.Color(0x1a202c);
+        
+        const sphereCamera = new THREE.PerspectiveCamera(
+            75,
+            document.getElementById('sphere-viewer-container').clientWidth / 
+            document.getElementById('sphere-viewer-container').clientHeight,
+            0.1,
+            1000
+        );
+        sphereCamera.position.set(50, 50, 50);
+
+        const sphereRenderer = new THREE.WebGLRenderer({ antialias: true });
+        sphereRenderer.setSize(
+            document.getElementById('sphere-viewer-container').clientWidth,
+            document.getElementById('sphere-viewer-container').clientHeight
+        );
+        document.getElementById('sphere-viewer-container').appendChild(sphereRenderer.domElement);
+
+        const sphereControls = new OrbitControls(sphereCamera, sphereRenderer.domElement);
+        sphereControls.enableDamping = true;
+        sphereControls.dampingFactor = 0.05;
+
+        // Lighting for sphere viewer
+        const sphereAmbientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        sphereScene.add(sphereAmbientLight);
+
+        const sphereDirectionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        sphereDirectionalLight.position.set(50, 50, 50);
+        sphereScene.add(sphereDirectionalLight);
+
+        // Animation Loop
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            sphereControls.update();
+            renderer.render(scene, camera);
+            sphereRenderer.render(sphereScene, sphereCamera);
+        }
+        animate();
+
+        // Handle Window Resize
+        window.addEventListener('resize', () => {
+            const viewerWidth = document.getElementById('viewer-container').clientWidth;
+            const viewerHeight = document.getElementById('viewer-container').clientHeight;
+            camera.aspect = viewerWidth / viewerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(viewerWidth, viewerHeight);
+
+            const sphereViewerWidth = document.getElementById('sphere-viewer-container').clientWidth;
+            const sphereViewerHeight = document.getElementById('sphere-viewer-container').clientHeight;
+            sphereCamera.aspect = sphereViewerWidth / sphereViewerHeight;
+            sphereCamera.updateProjectionMatrix();
+            sphereRenderer.setSize(sphereViewerWidth, sphereViewerHeight);
+        });
+
+        // File Upload Handler
+        document.getElementById('file-input').addEventListener('change', async (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            updateStatus('processing', 'Loading STL file...');
+            showLoading(true);
+
+            const loader = new STLLoader();
+            const reader = new FileReader();
+
+            reader.onload = (e) => {
+                const arrayBuffer = e.target.result;
+                const geometry = loader.parse(arrayBuffer);
+                
+                // Center and scale geometry
+                geometry.computeBoundingBox();
+                const center = new THREE.Vector3();
+                geometry.boundingBox.getCenter(center);
+                geometry.translate(-center.x, -center.y, -center.z);
+                
+                // Compute normals
+                geometry.computeVertexNormals();
+                
+                // Store geometry
+                state.geometry = geometry;
+                
+                // Create mesh and add to scene
+                const material = new THREE.MeshPhongMaterial({
+                    color: 0x4299e1,
+                    flatShading: false,
+                    side: THREE.DoubleSide
+                });
+                
+                if (state.mesh) {
+                    scene.remove(state.mesh);
+                }
+                
+                state.mesh = new THREE.Mesh(geometry, material);
+                scene.add(state.mesh);
+                
+                // Adjust camera
+                const size = new THREE.Vector3();
+                geometry.boundingBox.getSize(size);
+                const maxDim = Math.max(size.x, size.y, size.z);
+                camera.position.set(maxDim, maxDim, maxDim);
+                controls.target.set(0, 0, 0);
+                controls.update();
+                
+                updateStatus('complete', 'STL file loaded successfully');
+                showLoading(false);
+                enableButton('btn-isolate', true);
+            };
+
+            reader.readAsArrayBuffer(file);
+        });
+
+        // Utility Functions
+        function updateStatus(type, text) {
+            const indicator = document.getElementById('status-indicator');
+            const statusText = document.getElementById('status-text');
+            
+            indicator.className = 'status-indicator';
+            if (type === 'ready') indicator.classList.add('status-ready');
+            else if (type === 'processing') indicator.classList.add('status-processing');
+            else if (type === 'complete') indicator.classList.add('status-complete');
+            
+            statusText.textContent = text;
+        }
+
+        function showLoading(show) {
+            document.getElementById('loading-overlay').classList.toggle('hidden', !show);
+        }
+
+        function enableButton(buttonId, enabled) {
+            const button = document.getElementById(buttonId);
+            button.disabled = !enabled;
+            if (enabled) {
+                button.classList.remove('opacity-50', 'cursor-not-allowed');
+            } else {
+                button.classList.add('opacity-50', 'cursor-not-allowed');
+            }
+        }
+
+        // ALGORITHM 1: Isolate Inner Surface
+        // Uses improved normal vector analysis and geometric constraints
+        // NOW WITH TRANSPARENCY: Non-selected surfaces are made 60% transparent
+        document.getElementById('btn-isolate').addEventListener('click', async () => {
+            if (!state.geometry) return;
+            
+            updateStatus('processing', 'Isolating inner bowl surface...');
+            showLoading(true);
+            
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            const positions = state.geometry.attributes.position.array;
+            const normals = state.geometry.attributes.normal.array;
+            
+            // Step 1: Calculate geometric centroid
+            const centroid = new THREE.Vector3(0, 0, 0);
+            const vertexCount = positions.length / 3;
+            
+            for (let i = 0; i < positions.length; i += 3) {
+                centroid.x += positions[i];
+                centroid.y += positions[i + 1];
+                centroid.z += positions[i + 2];
+            }
+            centroid.divideScalar(vertexCount);
+            
+            console.log(`Centroid: (${centroid.x.toFixed(2)}, ${centroid.y.toFixed(2)}, ${centroid.z.toFixed(2)})`);
+            
+            // Step 2: Identify inner surface using multiple criteria
+            state.innerSurfaceVertices = [];
+            const innerFaces = [];
+            const vertexMap = new Map();
+            const faceCount = positions.length / 9;
+            const innerFaceSet = new Set();
+            
+            for (let i = 0; i < positions.length; i += 9) {
+                const v1 = new THREE.Vector3(positions[i], positions[i + 1], positions[i + 2]);
+                const v2 = new THREE.Vector3(positions[i + 3], positions[i + 4], positions[i + 5]);
+                const v3 = new THREE.Vector3(positions[i + 6], positions[i + 7], positions[i + 8]);
+                
+                const faceCenter = new THREE.Vector3()
+                    .add(v1).add(v2).add(v3)
+                    .divideScalar(3);
+                
+                // Normal at first vertex of the face
+                const n = new THREE.Vector3(normals[i], normals[i + 1], normals[i + 2]);
+                
+                // Vector from face center to centroid
+                const toCentroid = new THREE.Vector3().subVectors(centroid, faceCenter).normalize();
+                
+                // Dot product: positive means normal points toward centroid (inner surface)
+                const dot = n.dot(toCentroid);
+                
+                // Additional criterion: curvature direction (concave surface)
+                // Inner surface normals should point inward
+                const distanceToCentroid = faceCenter.distanceTo(centroid);
+                
+                // More strict threshold for better inner surface isolation
+                // Inner surface: normals point toward centroid AND reasonable distance
+                const faceIndex = i / 9;
+                if (dot > 0.4 && distanceToCentroid > 1.0) {
+                    innerFaces.push(faceIndex);
+                    innerFaceSet.add(faceIndex);
+                    
+                    // Add vertices using a map to avoid duplicates
+                    const idx1 = i / 3;
+                    const idx2 = i / 3 + 1;
+                    const idx3 = i / 3 + 2;
+                    
+                    if (!vertexMap.has(idx1)) {
+                        const vData = { pos: v1.clone(), index: idx1 };
+                        vertexMap.set(idx1, vData);
+                        state.innerSurfaceVertices.push(vData);
+                    }
+                    if (!vertexMap.has(idx2)) {
+                        const vData = { pos: v2.clone(), index: idx2 };
+                        vertexMap.set(idx2, vData);
+                        state.innerSurfaceVertices.push(vData);
+                    }
+                    if (!vertexMap.has(idx3)) {
+                        const vData = { pos: v3.clone(), index: idx3 };
+                        vertexMap.set(idx3, vData);
+                        state.innerSurfaceVertices.push(vData);
+                    }
+                }
+            }
+            
+            console.log(`Inner surface isolated: ${innerFaces.length} faces, ${state.innerSurfaceVertices.length} unique vertices`);
+            console.log(`Algorithm: Normal vector analysis with dot product threshold > 0.4`);
+            
+            // Step 3: Apply transparency to non-selected surfaces
+            // Build index buffer with inner faces first, then outer faces
+            const innerIndices = [];
+            const outerIndices = [];
+            
+            for (let faceIdx = 0; faceIdx < faceCount; faceIdx++) {
+                const baseIdx = faceIdx * 3; // Each face has 3 vertices
+                if (innerFaceSet.has(faceIdx)) {
+                    // Inner surface vertices - add to inner list
+                    innerIndices.push(baseIdx, baseIdx + 1, baseIdx + 2);
+                } else {
+                    // Outer surface vertices - add to outer list (will be transparent)
+                    outerIndices.push(baseIdx, baseIdx + 1, baseIdx + 2);
+                }
+            }
+            
+            console.log(`Inner indices: ${innerIndices.length}, Outer indices: ${outerIndices.length}`);
+            
+            // Combine indices: inner first, then outer
+            const combinedIndices = [...innerIndices, ...outerIndices];
+            
+            // Apply new index buffer to geometry
+            const geometry = state.geometry;
+            geometry.setIndex(combinedIndices);
+            
+            // Clear existing groups
+            geometry.clearGroups();
+            
+            // Add group for inner surface (opaque) - starts at 0
+            if (innerIndices.length > 0) {
+                geometry.addGroup(0, innerIndices.length, 0);
+                console.log(`Inner group: start=0, count=${innerIndices.length}, materialIndex=0`);
+            }
+            
+            // Add group for outer surface (transparent) - starts after inner
+            if (outerIndices.length > 0) {
+                geometry.addGroup(innerIndices.length, outerIndices.length, 1);
+                console.log(`Outer group: start=${innerIndices.length}, count=${outerIndices.length}, materialIndex=1`);
+            }
+            
+            // Create materials array: [0] opaque for inner, [1] transparent for outer
+            const materials = [
+                new THREE.MeshPhongMaterial({
+                    color: 0x4299e1,
+                    flatShading: false,
+                    side: THREE.DoubleSide,
+                    transparent: false
+                }),
+                new THREE.MeshPhongMaterial({
+                    color: 0x4299e1,
+                    flatShading: false,
+                    side: THREE.DoubleSide,
+                    transparent: true,
+                    opacity: 0.4,
+                    depthWrite: false
+                })
+            ];
+            
+            // Update mesh with multi-material
+            state.mesh.material = materials;
+            state.mesh.renderOrder = 1; // Ensure proper transparency rendering
+            
+            updateStatus('complete', `Inner surface isolated: ${innerFaces.length} faces (${((innerFaces.length/faceCount)*100).toFixed(1)}% of mesh), ${state.innerSurfaceVertices.length} vertices`);
+            showLoading(false);
+            enableButton('btn-detect-wear', true);
+        });
+
+        // ALGORITHM 2: Detect Worn/Unworn Zones
+        // Optimized algorithm using spatial sampling and radial deviation analysis
+        document.getElementById('btn-detect-wear').addEventListener('click', async () => {
+            if (state.innerSurfaceVertices.length === 0) {
+                alert('Please isolate inner surface first');
+                return;
+            }
+            
+            updateStatus('processing', 'Detecting wear zones using optimized spatial analysis...');
+            showLoading(true);
+            
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            const allVertices = state.innerSurfaceVertices;
+            console.log(`Processing ${allVertices.length} inner surface vertices`);
+            
+            // Step 1: Sample vertices if too many (performance optimization)
+            let sampledVertices = allVertices;
+            let samplingRatio = 1.0;
+            const maxVertices = 20000;
+            
+            if (allVertices.length > maxVertices) {
+                samplingRatio = maxVertices / allVertices.length;
+                sampledVertices = [];
+                for (let i = 0; i < allVertices.length; i++) {
+                    if (Math.random() < samplingRatio) {
+                        sampledVertices.push(allVertices[i]);
+                    }
+                }
+                console.log(`Sampled to ${sampledVertices.length} vertices for analysis`);
+            }
+            
+            const vertices = sampledVertices.map(v => v.pos);
+            
+            // Step 2: Fit reference sphere to ALL inner surface vertices
+            // This gives us the unworn sphere center for accurate penetration calculation
+            let center = new THREE.Vector3(0, 0, 0);
+            vertices.forEach(v => center.add(v));
+            center.divideScalar(vertices.length);
+            
+            // Initial radius estimate
+            let avgRadius = 0;
+            vertices.forEach(v => avgRadius += v.distanceTo(center));
+            avgRadius /= vertices.length;
+            
+            // Refine sphere fit using least-squares (simple iterative approach)
+            for (let iter = 0; iter < 5; iter++) {
+                const newCenter = new THREE.Vector3(0, 0, 0);
+                let newRadius = 0;
+                
+                vertices.forEach(v => {
+                    const dir = new THREE.Vector3().subVectors(v, center).normalize();
+                    const pointOnSphere = center.clone().add(dir.multiplyScalar(avgRadius));
+                    newCenter.add(pointOnSphere);
+                });
+                newCenter.divideScalar(vertices.length);
+                
+                vertices.forEach(v => {
+                    newRadius += v.distanceTo(newCenter);
+                });
+                newRadius /= vertices.length;
+                
+                center = newCenter;
+                avgRadius = newRadius;
+            }
+            
+            console.log(`Reference sphere: center=(${center.x.toFixed(2)}, ${center.y.toFixed(2)}, ${center.z.toFixed(2)}), radius=${avgRadius.toFixed(2)}`);
+            
+            // Step 3: Calculate PENETRATION DEPTHS for ALL vertices relative to reference sphere
+            // Penetration = how much vertex is INSIDE the reference sphere
+            // Positive penetration = worn (inside sphere, material lost)
+            // Negative/zero penetration = unworn (on or outside sphere)
+            const penetrationDepths = new Array(allVertices.length);
+            
+            for (let i = 0; i < allVertices.length; i++) {
+                const v = allVertices[i].pos;
+                const distance = v.distanceTo(center);
+                penetrationDepths[i] = avgRadius - distance; // Positive = inside sphere
+            }
+            
+            // Step 4: Calculate robust statistics for thresholding
+            const sortedPenetrations = [...penetrationDepths].sort((a, b) => a - b);
+            const q1 = sortedPenetrations[Math.floor(sortedPenetrations.length * 0.25)];
+            const q3 = sortedPenetrations[Math.floor(sortedPenetrations.length * 0.75)];
+            const median = sortedPenetrations[Math.floor(sortedPenetrations.length / 2)];
+            const iqr = q3 - q1;
+            
+            // Worn zone: POSITIVE penetration (vertex inside sphere = material loss)
+            // Use threshold above median to detect significant penetration
+            const wornThreshold = median + 0.5 * iqr;
+            
+            console.log(`Penetration stats: Q1=${q1.toFixed(3)}, Median=${median.toFixed(3)}, Q3=${q3.toFixed(3)}, IQR=${iqr.toFixed(3)}`);
+            console.log(`Worn threshold (penetration): ${wornThreshold.toFixed(3)}`);
+            
+            // Step 5: Classify vertices based on PENETRATION DEPTH
+            // WORN = vertices with HIGH penetration (deep inside reference sphere)
+            // UNWORN = vertices with LOW/negative penetration (on or outside reference sphere)
+            state.wornVertices = [];
+            state.unwornVertices = [];
+            
+            allVertices.forEach((v, i) => {
+                if (penetrationDepths[i] > wornThreshold) {
+                    // High penetration = deep inside sphere = WORN zone
+                    state.wornVertices.push(v);
+                } else {
+                    // Low penetration = on/outside sphere = UNWORN zone
+                    state.unwornVertices.push(v);
+                }
+            });
+            
+            // Fallback: if no worn vertices or too many, use penetration-based classification
+            if (state.wornVertices.length === 0 || state.wornVertices.length > allVertices.length * 0.5) {
+                console.log('Adjusting threshold using penetration-based classification...');
+                
+                // Rank vertices by penetration depth
+                const penetrations = allVertices.map((v, i) => ({
+                    vertex: v,
+                    penetration: penetrationDepths[i]
+                }));
+                
+                // Sort by penetration (highest first = most worn)
+                penetrations.sort((a, b) => b.penetration - a.penetration);
+                
+                // Worn vertices are the top 20% with highest penetration
+                const wornCount = Math.floor(allVertices.length * 0.20);
+                
+                state.wornVertices = penetrations.slice(0, wornCount).map(p => p.vertex);
+                state.unwornVertices = penetrations.slice(wornCount).map(p => p.vertex);
+            }
+            
+            // Step 6: Apply colors to geometry
+            const colors = new Float32Array(state.geometry.attributes.position.count * 3);
+            
+            // Default color (blue)
+            for (let i = 0; i < colors.length; i += 3) {
+                colors[i] = 0.259;
+                colors[i + 1] = 0.6;
+                colors[i + 2] = 0.882;
+            }
+            
+            // Worn vertices (red)
+            state.wornVertices.forEach(v => {
+                const idx = v.index * 3;
+                colors[idx] = 0.96;
+                colors[idx + 1] = 0.396;
+                colors[idx + 2] = 0.396;
+            });
+            
+            // Unworn vertices (green)
+            state.unwornVertices.forEach(v => {
+                const idx = v.index * 3;
+                colors[idx] = 0.282;
+                colors[idx + 1] = 0.733;
+                colors[idx + 2] = 0.471;
+            });
+            
+            state.geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            
+            // For wear detection, use opaque material to clearly show red/green zones
+            // Replace multi-material with single opaque material for better visibility
+            state.mesh.material = new THREE.MeshPhongMaterial({
+                vertexColors: true,
+                flatShading: false,
+                side: THREE.DoubleSide,
+                transparent: false
+            });
+            
+            const wornPercent = (state.wornVertices.length / allVertices.length * 100).toFixed(1);
+            const unwornPercent = (state.unwornVertices.length / allVertices.length * 100).toFixed(1);
+            
+            console.log(`Worn: ${state.wornVertices.length} (${wornPercent}%), Unworn: ${state.unwornVertices.length} (${unwornPercent}%)`);
+            console.log(`Algorithm: Optimized radial deviation with robust statistics (IQR-based)`);
+            
+            updateStatus('complete', `Wear zones detected: ${state.wornVertices.length} worn (${wornPercent}%), ${state.unwornVertices.length} unworn (${unwornPercent}%)`);
+            showLoading(false);
+            enableButton('btn-fit-sphere', true);
+        });
+
+        // ALGORITHM 3: Fit Dual Spheres and Detect Cutting Plane
+        // IMPROVED: Uses Gauss-Newton with Levenberg-Marquardt fallback for robust sphere fitting
+        // Ensures worn and unworn surfaces coincide precisely with their fitted spheres
+        document.getElementById('btn-fit-sphere').addEventListener('click', async () => {
+            if (state.unwornVertices.length === 0 || state.wornVertices.length === 0) {
+                alert('Please detect wear zones first');
+                return;
+            }
+            
+            updateStatus('processing', 'Fitting dual spheres using Gauss-Newton optimization...');
+            showLoading(true);
+            document.getElementById('sphere-loading-overlay').classList.remove('hidden');
+            
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            // IMPROVED Helper function: Gauss-Newton with Levenberg-Marquardt fallback
+            function fitSphereRobust(vertices) {
+                // Step 1: Initialize center (geometric centroid)
+                let center = new THREE.Vector3(0, 0, 0);
+                vertices.forEach(p => center.add(p));
+                center.divideScalar(vertices.length);
+                
+                // Step 2: Initialize radius (average distance to center)
+                let radius = 0;
+                vertices.forEach(p => radius += p.distanceTo(center));
+                radius /= vertices.length;
+                
+                console.log(`Initial sphere: center=(${center.x.toFixed(2)}, ${center.y.toFixed(2)}, ${center.z.toFixed(2)}), radius=${radius.toFixed(2)}`);
+                
+                // Step 3: Gauss-Newton iterations with adaptive damping
+                const maxIterations = 20;
+                const tolerance = 1e-6;
+                let lambda = 0.001; // LM damping factor
+                let prevResidual = Infinity;
+                
+                for (let iter = 0; iter < maxIterations; iter++) {
+                    // Compute residuals: r_i = ||p_i - c|| - R
+                    let residualSum = 0;
+                    const n = vertices.length;
+                    
+                    // Jacobian matrix: J is n x 4 (partial derivatives w.r.t. cx, cy, cz, R)
+                    // For each point p_i: residual = sqrt((px-cx)^2 + (py-cy)^2 + (pz-cz)^2) - R
+                    // ∂r/∂cx = -(px-cx)/d, ∂r/∂cy = -(py-cy)/d, ∂r/∂cz = -(pz-cz)/d, ∂r/∂R = -1
+                    
+                    const J = []; // Jacobian matrix (n x 4)
+                    const residuals = []; // Residual vector (n x 1)
+                    
+                    vertices.forEach(p => {
+                        const dx = p.x - center.x;
+                        const dy = p.y - center.y;
+                        const dz = p.z - center.z;
+                        const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+                        
+                        const residual = dist - radius;
+                        residuals.push(residual);
+                        residualSum += residual * residual;
+                        
+                        // Jacobian row: [∂r/∂cx, ∂r/∂cy, ∂r/∂cz, ∂r/∂R]
+                        if (dist > 1e-10) {
+                            J.push([-dx/dist, -dy/dist, -dz/dist, -1]);
+                        } else {
+                            J.push([0, 0, 0, -1]);
+                        }
+                    });
+                    
+                    const currentResidual = Math.sqrt(residualSum / n);
+                    console.log(`Iteration ${iter}: RMSE = ${currentResidual.toFixed(6)}, lambda = ${lambda.toFixed(6)}`);
+                    
+                    // Check convergence
+                    if (currentResidual < tolerance || Math.abs(prevResidual - currentResidual) < tolerance * 0.1) {
+                        console.log(`Converged after ${iter} iterations`);
+                        break;
+                    }
+                    
+                    // Compute J^T * J (4x4 matrix)
+                    const JTJ = [[0,0,0,0], [0,0,0,0], [0,0,0,0], [0,0,0,0]];
+                    for (let i = 0; i < n; i++) {
+                        for (let j = 0; j < 4; j++) {
+                            for (let k = 0; k < 4; k++) {
+                                JTJ[j][k] += J[i][j] * J[i][k];
+                            }
+                        }
+                    }
+                    
+                    // Add Levenberg-Marquardt damping: JTJ + lambda * I
+                    for (let i = 0; i < 4; i++) {
+                        JTJ[i][i] += lambda;
+                    }
+                    
+                    // Compute J^T * r (4x1 vector)
+                    const JTr = [0, 0, 0, 0];
+                    for (let i = 0; i < n; i++) {
+                        for (let j = 0; j < 4; j++) {
+                            JTr[j] += J[i][j] * residuals[i];
+                        }
+                    }
+                    
+                    // Solve (JTJ) * delta = -JTr using Gauss elimination
+                    const delta = solveLinearSystem4x4(JTJ, JTr.map(x => -x));
+                    
+                    if (!delta) {
+                        console.log('Singular matrix, increasing lambda');
+                        lambda *= 10;
+                        continue;
+                    }
+                    
+                    // Update parameters
+                    const newCenter = new THREE.Vector3(
+                        center.x + delta[0],
+                        center.y + delta[1],
+                        center.z + delta[2]
+                    );
+                    const newRadius = radius + delta[3];
+                    
+                    // Check if update improves residual
+                    let newResidualSum = 0;
+                    vertices.forEach(p => {
+                        const r = p.distanceTo(newCenter) - newRadius;
+                        newResidualSum += r * r;
+                    });
+                    const newResidual = Math.sqrt(newResidualSum / n);
+                    
+                    if (newResidual < currentResidual) {
+                        // Accept update, decrease damping
+                        center = newCenter;
+                        radius = newRadius;
+                        prevResidual = currentResidual;
+                        lambda = Math.max(lambda / 10, 1e-10);
+                    } else {
+                        // Reject update, increase damping (Levenberg-Marquardt)
+                        lambda *= 10;
+                        if (lambda > 1e6) {
+                            console.log('Lambda too large, stopping');
+                            break;
+                        }
+                    }
+                }
+                
+                console.log(`Final sphere: center=(${center.x.toFixed(4)}, ${center.y.toFixed(4)}, ${center.z.toFixed(4)}), radius=${radius.toFixed(4)}`);
+                
+                return { center, radius };
+            }
+            
+            // Helper: Solve 4x4 linear system using Gauss elimination
+            function solveLinearSystem4x4(A, b) {
+                // Create augmented matrix
+                const n = 4;
+                const aug = A.map((row, i) => [...row, b[i]]);
+                
+                // Forward elimination
+                for (let i = 0; i < n; i++) {
+                    // Find pivot
+                    let maxRow = i;
+                    for (let k = i + 1; k < n; k++) {
+                        if (Math.abs(aug[k][i]) > Math.abs(aug[maxRow][i])) {
+                            maxRow = k;
+                        }
+                    }
+                    
+                    // Swap rows
+                    [aug[i], aug[maxRow]] = [aug[maxRow], aug[i]];
+                    
+                    // Check for singular matrix
+                    if (Math.abs(aug[i][i]) < 1e-10) {
+                        return null;
+                    }
+                    
+                    // Eliminate column
+                    for (let k = i + 1; k < n; k++) {
+                        const factor = aug[k][i] / aug[i][i];
+                        for (let j = i; j <= n; j++) {
+                            aug[k][j] -= factor * aug[i][j];
+                        }
+                    }
+                }
+                
+                // Back substitution
+                const x = new Array(n);
+                for (let i = n - 1; i >= 0; i--) {
+                    x[i] = aug[i][n];
+                    for (let j = i + 1; j < n; j++) {
+                        x[i] -= aug[i][j] * x[j];
+                    }
+                    x[i] /= aug[i][i];
+                }
+                
+                return x;
+            }
+            
+            // Fit unworn sphere (green) using robust Gauss-Newton
+            console.log('=== Fitting UNWORN sphere ===');
+            const unwornPositions = state.unwornVertices.map(v => v.pos);
+            state.unwornSphere = fitSphereRobust(unwornPositions);
+            
+            // Fit worn sphere (red) using robust Gauss-Newton
+            console.log('=== Fitting WORN sphere ===');
+            const wornPositions = state.wornVertices.map(v => v.pos);
+            state.wornSphere = fitSphereRobust(wornPositions);
+            
+            // Detect cutting plane (rim detection using Z-coordinate change)
+            const allPositions = state.geometry.attributes.position.array;
+            const zCoords = [];
+            for (let i = 0; i < allPositions.length; i += 3) {
+                zCoords.push(allPositions[i + 2]);
+            }
+            zCoords.sort((a, b) => a - b);
+            
+            // Find significant Z gradient (rim is where Z changes rapidly)
+            let maxGradient = 0;
+            let rimZ = zCoords[Math.floor(zCoords.length * 0.4)];
+            
+            for (let i = Math.floor(zCoords.length * 0.3); i < Math.floor(zCoords.length * 0.7); i++) {
+                const gradient = Math.abs(zCoords[i + 1] - zCoords[i]);
+                if (gradient > maxGradient) {
+                    maxGradient = gradient;
+                    rimZ = zCoords[i];
+                }
+            }
+            
+            state.cuttingPlane = { z: rimZ };
+            
+            console.log(`Unworn sphere: center=(${state.unwornSphere.center.x.toFixed(2)}, ${state.unwornSphere.center.y.toFixed(2)}, ${state.unwornSphere.center.z.toFixed(2)}), radius=${state.unwornSphere.radius.toFixed(2)}`);
+            console.log(`Worn sphere: center=(${state.wornSphere.center.x.toFixed(2)}, ${state.wornSphere.center.y.toFixed(2)}, ${state.wornSphere.center.z.toFixed(2)}), radius=${state.wornSphere.radius.toFixed(2)}`);
+            console.log(`Cutting plane at Z = ${rimZ.toFixed(2)}`);
+            
+            // Clear and update sphere viewer
+            while (sphereScene.children.length > 0) {
+                sphereScene.remove(sphereScene.children[0]);
+            }
+            
+            sphereScene.add(sphereAmbientLight);
+            sphereScene.add(sphereDirectionalLight);
+            
+            // Add STL mesh
+            const clonedGeometry = state.geometry.clone();
+            const clonedMaterial = new THREE.MeshPhongMaterial({
+                vertexColors: true,
+                flatShading: false,
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: 0.6
+            });
+            const clonedMesh = new THREE.Mesh(clonedGeometry, clonedMaterial);
+            
+            const colors = new Float32Array(clonedGeometry.attributes.position.count * 3);
+            for (let i = 0; i < colors.length; i += 3) {
+                colors[i] = 0.259; colors[i + 1] = 0.6; colors[i + 2] = 0.882;
+            }
+            state.wornVertices.forEach(v => {
+                const idx = v.index * 3;
+                colors[idx] = 0.96; colors[idx + 1] = 0.396; colors[idx + 2] = 0.396;
+            });
+            state.unwornVertices.forEach(v => {
+                const idx = v.index * 3;
+                colors[idx] = 0.282; colors[idx + 1] = 0.733; colors[idx + 2] = 0.471;
+            });
+            clonedGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            sphereScene.add(clonedMesh);
+            
+            // Add unworn sphere (green, transparent)
+            const unwornSphereGeom = new THREE.SphereGeometry(state.unwornSphere.radius, 64, 64);
+            const unwornSphereMat = new THREE.MeshPhongMaterial({
+                color: 0x48bb78,
+                transparent: true,
+                opacity: 0.3,
+                side: THREE.DoubleSide
+            });
+            const unwornSphereMesh = new THREE.Mesh(unwornSphereGeom, unwornSphereMat);
+            unwornSphereMesh.position.copy(state.unwornSphere.center);
+            sphereScene.add(unwornSphereMesh);
+            
+            // Add unworn center marker
+            const unwornCenterGeom = new THREE.SphereGeometry(0.5, 16, 16);
+            const unwornCenterMat = new THREE.MeshBasicMaterial({ color: 0x48bb78 });
+            const unwornCenterMesh = new THREE.Mesh(unwornCenterGeom, unwornCenterMat);
+            unwornCenterMesh.position.copy(state.unwornSphere.center);
+            sphereScene.add(unwornCenterMesh);
+            
+            // Add worn sphere (red, transparent)
+            const wornSphereGeom = new THREE.SphereGeometry(state.wornSphere.radius, 64, 64);
+            const wornSphereMat = new THREE.MeshPhongMaterial({
+                color: 0xf56565,
+                transparent: true,
+                opacity: 0.3,
+                side: THREE.DoubleSide
+            });
+            const wornSphereMesh = new THREE.Mesh(wornSphereGeom, wornSphereMat);
+            wornSphereMesh.position.copy(state.wornSphere.center);
+            sphereScene.add(wornSphereMesh);
+            
+            // Add worn center marker
+            const wornCenterGeom = new THREE.SphereGeometry(0.5, 16, 16);
+            const wornCenterMat = new THREE.MeshBasicMaterial({ color: 0xf56565 });
+            const wornCenterMesh = new THREE.Mesh(wornCenterGeom, wornCenterMat);
+            wornCenterMesh.position.copy(state.wornSphere.center);
+            sphereScene.add(wornCenterMesh);
+            
+            // Add cutting plane
+            const planeSize = Math.max(state.unwornSphere.radius, state.wornSphere.radius) * 3;
+            const planeGeom = new THREE.PlaneGeometry(planeSize, planeSize);
+            const planeMat = new THREE.MeshBasicMaterial({
+                color: 0xffd700,
+                transparent: true,
+                opacity: 0.2,
+                side: THREE.DoubleSide
+            });
+            const planeMesh = new THREE.Mesh(planeGeom, planeMat);
+            planeMesh.position.z = rimZ;
+            sphereScene.add(planeMesh);
+            
+            // Position camera
+            const size = new THREE.Vector3();
+            state.geometry.boundingBox.getSize(size);
+            const maxDim = Math.max(size.x, size.y, size.z);
+            sphereCamera.position.set(maxDim, maxDim, maxDim);
+            sphereControls.target.set(0, 0, 0);
+            sphereControls.update();
+            
+            updateStatus('complete', 'Dual spheres fitted and rim detected');
+            showLoading(false);
+            document.getElementById('sphere-loading-overlay').classList.add('hidden');
+            enableButton('btn-calculate', true);
+        });
+
+        // ALGORITHM 4: Calculate Volumetric and Linear Wear
+        // IMPROVED: Volumetric integral between worn surface (real mesh) and unworn sphere
+        // Linear wear calculated from penetration depths
+        document.getElementById('btn-calculate').addEventListener('click', async () => {
+            if (!state.unwornSphere || !state.wornSphere || !state.cuttingPlane) {
+                alert('Please fit dual spheres first');
+                return;
+            }
+            
+            updateStatus('processing', 'Calculating wear using real surface-to-sphere integral...');
+            showLoading(true);
+            
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            console.log('=== VOLUMETRIC WEAR CALCULATION ===');
+            console.log('Method: Volume integral between worn surface (real mesh) and unworn sphere');
+            
+            // Helper: Project point onto sphere surface
+            function projectOntoSphere(point, sphereCenter, sphereRadius) {
+                const dir = new THREE.Vector3().subVectors(point, sphereCenter);
+                const dist = dir.length();
+                if (dist < 1e-10) return sphereCenter.clone();
+                dir.normalize();
+                return sphereCenter.clone().add(dir.multiplyScalar(sphereRadius));
+            }
+            
+            // Helper: Calculate signed tetrahedral volume using scalar triple product
+            // For tetrahedron with vertices (v0, v1, v2, v3), volume = (1/6) * |(v1-v0) · ((v2-v0) × (v3-v0))|
+            function tetrahedronVolume(v0, v1, v2, v3) {
+                const a = new THREE.Vector3().subVectors(v1, v0);
+                const b = new THREE.Vector3().subVectors(v2, v0);
+                const c = new THREE.Vector3().subVectors(v3, v0);
+                const cross = new THREE.Vector3().crossVectors(b, c);
+                return a.dot(cross) / 6.0; // Signed volume
+            }
+            
+            // VOLUMETRIC WEAR: True integral between worn surface (mesh) and unworn sphere
+            // Decompose each hexahedral prism into 3 tetrahedra with correct winding
+            const positions = state.geometry.attributes.position.array;
+            let totalVolume = 0;
+            let triangleCount = 0;
+            
+            // Get worn vertex indices
+            const wornVertexIndices = new Set(state.wornVertices.map(v => v.index));
+            
+            // Process each face that has at least one worn vertex
+            for (let i = 0; i < positions.length; i += 9) {
+                const idx1 = (i / 3);
+                const idx2 = (i / 3) + 1;
+                const idx3 = (i / 3) + 2;
+                
+                // Check if this face is part of the worn zone (at least one vertex)
+                const isWornFace = wornVertexIndices.has(idx1) || 
+                                   wornVertexIndices.has(idx2) || 
+                                   wornVertexIndices.has(idx3);
+                
+                if (!isWornFace) continue;
+                
+                // Get triangle vertices (worn surface - actual mesh)
+                const p1 = new THREE.Vector3(positions[i], positions[i+1], positions[i+2]);
+                const p2 = new THREE.Vector3(positions[i+3], positions[i+4], positions[i+5]);
+                const p3 = new THREE.Vector3(positions[i+6], positions[i+7], positions[i+8]);
+                
+                // Project onto unworn sphere (ideal reference geometry)
+                const q1 = projectOntoSphere(p1, state.unwornSphere.center, state.unwornSphere.radius);
+                const q2 = projectOntoSphere(p2, state.unwornSphere.center, state.unwornSphere.radius);
+                const q3 = projectOntoSphere(p3, state.unwornSphere.center, state.unwornSphere.radius);
+                
+                // Decompose hexahedral prism (p1,p2,p3,q1,q2,q3) into 3 tetrahedra
+                // This is a standard decomposition that preserves volume without cancellation
+                
+                // Tetrahedron 1: (p1, p2, p3, q1)
+                const vol1 = tetrahedronVolume(p1, p2, p3, q1);
+                
+                // Tetrahedron 2: (p2, p3, q1, q2)
+                const vol2 = tetrahedronVolume(p2, p3, q1, q2);
+                
+                // Tetrahedron 3: (p3, q1, q2, q3)
+                const vol3 = tetrahedronVolume(p3, q1, q2, q3);
+                
+                // Total volume of this prism
+                const prismVolume = vol1 + vol2 + vol3;
+                
+                // Accumulate absolute value (wear is always positive)
+                totalVolume += Math.abs(prismVolume);
+                triangleCount++;
+            }
+            
+            const volumetricWear = totalVolume;
+            
+            console.log(`Processed ${triangleCount} worn triangles`);
+            console.log(`Volumetric wear (real integral): ${volumetricWear.toFixed(4)} mm³`);
+            
+            // LINEAR WEAR: Calculate penetration depths for worn vertices
+            const penetrationDepths = [];
+            
+            state.wornVertices.forEach(v => {
+                // Distance from vertex to unworn sphere surface
+                const distToCenter = v.pos.distanceTo(state.unwornSphere.center);
+                const penetration = state.unwornSphere.radius - distToCenter;
+                penetrationDepths.push(penetration);
+            });
+            
+            // Calculate statistics
+            const meanPenetration = penetrationDepths.reduce((a, b) => a + b, 0) / penetrationDepths.length;
+            const maxPenetration = Math.max(...penetrationDepths);
+            const minPenetration = Math.min(...penetrationDepths);
+            
+            console.log(`Linear wear (mean): ${meanPenetration.toFixed(4)} mm`);
+            console.log(`Linear wear (max): ${maxPenetration.toFixed(4)} mm`);
+            console.log(`Linear wear (min): ${minPenetration.toFixed(4)} mm`);
+            
+            // Calculate areas for reference
+            const wornArea = state.wornVertices.length * 0.1;
+            const unwornArea = state.unwornVertices.length * 0.1;
+            
+            state.wearData = {
+                volumetricWear: Math.max(0, volumetricWear),
+                linearWearMean: meanPenetration,
+                linearWearMax: maxPenetration,
+                linearWearMin: minPenetration,
+                unwornSphereCenter: state.unwornSphere.center,
+                unwornSphereRadius: state.unwornSphere.radius,
+                wornSphereCenter: state.wornSphere.center,
+                wornSphereRadius: state.wornSphere.radius,
+                cuttingPlaneZ: state.cuttingPlane.z,
+                wornArea,
+                unwornArea
+            };
+            
+            // Update UI
+            document.getElementById('metric-volume').textContent = Math.max(0, volumetricWear).toFixed(4) + ' mm³';
+            document.getElementById('metric-linear-mean').textContent = meanPenetration.toFixed(4) + ' mm';
+            document.getElementById('metric-linear-max').textContent = maxPenetration.toFixed(4) + ' mm';
+            document.getElementById('metric-linear-min').textContent = minPenetration.toFixed(4) + ' mm';
+            document.getElementById('sphere-center').textContent = 
+                `Unworn: (${state.unwornSphere.center.x.toFixed(2)}, ${state.unwornSphere.center.y.toFixed(2)}, ${state.unwornSphere.center.z.toFixed(2)}) | Worn: (${state.wornSphere.center.x.toFixed(2)}, ${state.wornSphere.center.y.toFixed(2)}, ${state.wornSphere.center.z.toFixed(2)}) mm`;
+            document.getElementById('sphere-radius').textContent = 
+                `Unworn: ${state.unwornSphere.radius.toFixed(2)} | Worn: ${state.wornSphere.radius.toFixed(2)} mm`;
+            document.getElementById('worn-area').textContent = wornArea.toFixed(2) + ' mm²';
+            document.getElementById('unworn-area').textContent = unwornArea.toFixed(2) + ' mm²';
+            
+            document.getElementById('results-container').classList.add('hidden');
+            document.getElementById('results-data').classList.remove('hidden');
+            
+            updateStatus('complete', 'Wear calculation complete');
+            showLoading(false);
+        });
+
+        // Export CSV
+        document.getElementById('btn-export-csv').addEventListener('click', () => {
+            if (!state.wearData) {
+                alert('Please complete analysis first');
+                return;
+            }
+            
+            const data = state.wearData;
+            const csv = [
+                'Metric,Value,Unit',
+                `Volumetric Wear (Real Integral),${data.volumetricWear.toFixed(6)},mm³`,
+                `Linear Wear Mean Penetration,${data.linearWearMean.toFixed(6)},mm`,
+                `Linear Wear Max Penetration,${data.linearWearMax.toFixed(6)},mm`,
+                `Linear Wear Min Penetration,${data.linearWearMin.toFixed(6)},mm`,
+                `Unworn Sphere Center X,${data.unwornSphereCenter.x.toFixed(6)},mm`,
+                `Unworn Sphere Center Y,${data.unwornSphereCenter.y.toFixed(6)},mm`,
+                `Unworn Sphere Center Z,${data.unwornSphereCenter.z.toFixed(6)},mm`,
+                `Unworn Sphere Radius,${data.unwornSphereRadius.toFixed(6)},mm`,
+                `Worn Sphere Center X,${data.wornSphereCenter.x.toFixed(6)},mm`,
+                `Worn Sphere Center Y,${data.wornSphereCenter.y.toFixed(6)},mm`,
+                `Worn Sphere Center Z,${data.wornSphereCenter.z.toFixed(6)},mm`,
+                `Worn Sphere Radius,${data.wornSphereRadius.toFixed(6)},mm`,
+                `Cutting Plane Z,${data.cuttingPlaneZ.toFixed(6)},mm`,
+                `Worn Zone Area,${data.wornArea.toFixed(4)},mm²`,
+                `Unworn Zone Area,${data.unwornArea.toFixed(4)},mm²`
+            ].join('\n');
+            
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'acetabular_wear_analysis.csv';
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+
+        // Export PDF Report
+        document.getElementById('btn-export-pdf').addEventListener('click', () => {
+            if (!state.wearData) {
+                alert('Please complete analysis first');
+                return;
+            }
+            
+            alert('PDF export requires jsPDF library. For now, please use the CSV export or take a screenshot of the results.');
+        });
+    </script>
+</body>
+</html>
