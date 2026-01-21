@@ -8,6 +8,10 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <!-- Optimization libraries for large 3D models -->
+    <script src="geometry-optimizer.js" defer></script>
+    <script src="performance-dashboard.js" defer></script>
+    <script src="optimization-tests.js" defer></script>
     <script type="importmap">
     {
         "imports": {
@@ -382,6 +386,30 @@
                         <span class="status-indicator status-ready" id="status-indicator"></span>
                         <span id="status-text">Ready to load file</span>
                     </div>
+                    
+                    <!-- Progress Bar for File Loading -->
+                    <div id="progress-container" class="hidden mb-4">
+                        <div class="flex justify-between items-center mb-2">
+                            <div>
+                                <span class="text-xs font-medium" style="color: #667eea;">Importing Model</span>
+                                <span class="text-xs ml-2" id="progress-speed" style="color: #94a3b8;"></span>
+                            </div>
+                            <div class="flex gap-4 text-xs" style="color: #94a3b8;">
+                                <span id="progress-time">0s / --s</span>
+                                <span id="progress-percent">0%</span>
+                            </div>
+                        </div>
+                        <div class="w-full bg-gray-200 rounded-full h-2 overflow-hidden" style="background: #e2e8f0;">
+                            <div id="progress-bar" class="h-full bg-gradient-to-r from-blue-500 to-purple-600 transition-all duration-300 rounded-full" style="width: 0%; background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);"></div>
+                        </div>
+                        <div class="flex justify-between mt-2">
+                            <span id="progress-loaded" class="text-xs" style="color: #94a3b8;">0 MB</span>
+                            <span id="progress-total" class="text-xs" style="color: #94a3b8;">-- MB</span>
+                        </div>
+                        <div class="mt-2 p-2 bg-blue-50 rounded text-xs" style="color: #3b82f6; display: none;" id="progress-eta">
+                            ⏱️ <span id="eta-text">Calculating ETA...</span>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="panel mb-6 fade-in" style="animation-delay: 0.2s;">
@@ -708,8 +736,65 @@
             octree: null,  // Spatial optimization structure
             maxWearLineObjects: [],
             detectionMethod: 'dual-sphere',  // NEW: 'hemisphere' or 'dual-sphere'
-            centerDistance: null  // NEW: Distance between worn and unworn sphere centers
+            centerDistance: null,  // NEW: Distance between worn and unworn sphere centers
+            // OPTIMIZATION FIELDS
+            memoryManager: null,
+            stlWorker: null,
+            performanceMonitor: null
         };
+
+        // ========================================
+        // OPTIMIZATION INITIALIZATION
+        // ========================================
+        function initializeOptimizations() {
+            // Initialize memory manager
+            state.memoryManager = new MemoryManager();
+            
+            // Initialize performance monitor
+            state.performanceMonitor = new PerformanceMonitor();
+            
+            // Initialize Web Worker for STL processing
+            try {
+                state.stlWorker = new Worker('stl-processor-worker.js');
+                state.stlWorker.onmessage = handleWorkerMessage;
+                console.log('Web Worker initialized for STL processing');
+            } catch (error) {
+                console.warn('Web Worker not available, falling back to main thread:', error);
+                state.stlWorker = null;
+            }
+        }
+
+        function handleWorkerMessage(event) {
+            const { type, data, error, progress } = event.data;
+            
+            if (error) {
+                console.error(`Worker error (${type}):`, error);
+                updateStatus('complete', `Error: ${error}`);
+                return;
+            }
+
+            switch (type) {
+                case 'parseProgress':
+                    updateStatus('processing', `Loading STL: ${progress.toFixed(1)}%`);
+                    break;
+                case 'parseSTL':
+                    if (data) {
+                        console.log(`STL parsed: ${data.vertexCount} vertices, ${data.faceCount} faces`);
+                        updateStatus('complete', 'STL parsed in worker thread');
+                    }
+                    break;
+                case 'isolateProgress':
+                    updateStatus('processing', `Isolating surface: ${progress.toFixed(1)}%`);
+                    break;
+                default:
+                    console.log(`Worker message:`, event.data);
+            }
+        }
+
+        // Initialize on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            initializeOptimizations();
+        });
 
         // ========================================
         // MODULE: GEOMETRY SERVICE
@@ -1797,22 +1882,154 @@
             console.log('Cleanup complete');
         }
 
-        // File Upload Handler
+        // ========================================
+        // PROGRESS TRACKING
+        // ========================================
+        const progressState = {
+            startTime: null,
+            lastUpdateTime: null,
+            lastLoadedBytes: 0,
+            totalBytes: 0,
+            loadedBytes: 0,
+            updateInterval: null
+        };
+
+        function showProgressBar(totalBytes) {
+            const container = document.getElementById('progress-container');
+            container.classList.remove('hidden');
+            
+            progressState.totalBytes = totalBytes;
+            progressState.loadedBytes = 0;
+            progressState.startTime = Date.now();
+            progressState.lastUpdateTime = Date.now();
+            progressState.lastLoadedBytes = 0;
+            
+            document.getElementById('progress-total').textContent = (totalBytes / (1024 * 1024)).toFixed(1) + ' MB';
+            document.getElementById('progress-eta').style.display = 'block';
+        }
+
+        function hideProgressBar() {
+            const container = document.getElementById('progress-container');
+            container.classList.add('hidden');
+            if (progressState.updateInterval) {
+                clearInterval(progressState.updateInterval);
+            }
+        }
+
+        function updateProgressBar(loadedBytes) {
+            progressState.loadedBytes = loadedBytes;
+            const percent = (loadedBytes / progressState.totalBytes) * 100;
+            
+            const elapsed = (Date.now() - progressState.startTime) / 1000;
+            const speed = loadedBytes / (1024 * 1024) / elapsed; // MB/s
+            const remainingBytes = progressState.totalBytes - loadedBytes;
+            const eta = remainingBytes / (1024 * 1024) / (speed || 0.001); // seconds
+            
+            // Update UI
+            document.getElementById('progress-bar').style.width = percent + '%';
+            document.getElementById('progress-percent').textContent = Math.round(percent) + '%';
+            document.getElementById('progress-loaded').textContent = (loadedBytes / (1024 * 1024)).toFixed(1) + ' MB';
+            document.getElementById('progress-speed').textContent = speed.toFixed(2) + ' MB/s';
+            
+            const elapsedMin = Math.floor(elapsed / 60);
+            const elapsedSec = Math.floor(elapsed % 60);
+            const etaMin = Math.floor(eta / 60);
+            const etaSec = Math.floor(eta % 60);
+            
+            const timeStr = (elapsedMin > 0 ? elapsedMin + 'm ' : '') + elapsedSec + 's' + 
+                            ' / ' + (etaMin > 0 ? etaMin + 'm ' : '') + etaSec + 's';
+            document.getElementById('progress-time').textContent = timeStr;
+            
+            // Format ETA display
+            let etaDisplay = '';
+            if (eta < 60) {
+                etaDisplay = `⏱️ Estimated time: ${Math.ceil(eta)}s remaining`;
+            } else if (eta < 3600) {
+                const min = Math.floor(eta / 60);
+                const sec = Math.floor(eta % 60);
+                etaDisplay = `⏱️ Estimated time: ${min}m ${sec}s remaining`;
+            } else {
+                const hours = Math.floor(eta / 3600);
+                const min = Math.floor((eta % 3600) / 60);
+                etaDisplay = `⏱️ Estimated time: ${hours}h ${min}m remaining`;
+            }
+            
+            document.getElementById('eta-text').textContent = etaDisplay;
+        }
+
+        // File Upload Handler with Progress Tracking
         document.getElementById('file-input').addEventListener('change', async (event) => {
             const file = event.target.files[0];
             if (!file) return;
 
+            state.performanceMonitor?.startMeasure('STL-loading');
             updateStatus('processing', 'Loading STL file...');
             showLoading(true);
+            
+            // Show progress bar
+            showProgressBar(file.size);
             
             // Clean up previous analysis before loading new file
             cleanupPreviousAnalysis();
 
-            const loader = new STLLoader();
-            const reader = new FileReader();
+            try {
+                // For large files (>50MB), use streaming loader with progress
+                let arrayBuffer;
+                if (file.size > 50 * 1024 * 1024) {
+                    console.log(`Large file detected (${(file.size / (1024 * 1024)).toFixed(1)}MB), using streaming loader...`);
+                    
+                    arrayBuffer = await new Promise((resolve, reject) => {
+                        const chunkSize = 1024 * 1024; // 1MB chunks
+                        let offset = 0;
+                        const chunks = [];
+                        const reader = new FileReader();
 
-            reader.onload = (e) => {
-                const arrayBuffer = e.target.result;
+                        const readChunk = () => {
+                            if (offset >= file.size) {
+                                const combinedArray = new Uint8Array(file.size);
+                                let pos = 0;
+                                for (const chunk of chunks) {
+                                    combinedArray.set(chunk, pos);
+                                    pos += chunk.length;
+                                }
+                                resolve(combinedArray);
+                                return;
+                            }
+
+                            const chunk = file.slice(offset, offset + chunkSize);
+                            reader.onload = (e) => {
+                                const chunkData = new Uint8Array(e.target.result);
+                                chunks.push(chunkData);
+                                offset += chunkSize;
+                                
+                                // Update progress
+                                updateProgressBar(offset);
+
+                                readChunk();
+                            };
+
+                            reader.onerror = () => reject(reader.error);
+                            reader.readAsArrayBuffer(chunk);
+                        };
+
+                        readChunk();
+                    });
+                } else {
+                    // For smaller files, use standard FileReader with progress
+                    arrayBuffer = await new Promise((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onprogress = (e) => {
+                            if (e.lengthComputable) {
+                                updateProgressBar(e.loaded);
+                            }
+                        };
+                        reader.onload = (e) => resolve(e.target.result);
+                        reader.onerror = reject;
+                        reader.readAsArrayBuffer(file);
+                    });
+                }
+
+                const loader = new STLLoader();
                 const geometry = loader.parse(arrayBuffer);
                 
                 // Center and scale geometry
@@ -1849,12 +2066,18 @@
                 controls.target.set(0, 0, 0);
                 controls.update();
                 
-                updateStatus('complete', 'STL file loaded successfully');
+                const perf = state.performanceMonitor?.endMeasure('STL-loading');
+                const memUsage = state.memoryManager?.getMemoryUsage();
+                updateStatus('complete', `STL loaded: ${geometry.attributes.position.count} vertices (${perf?.duration}) - Memory: ${memUsage}MB`);
                 showLoading(false);
+                hideProgressBar();
                 enableButton('btn-isolate', true);
-            };
-
-            reader.readAsArrayBuffer(file);
+            } catch (error) {
+                console.error('Failed to load STL:', error);
+                updateStatus('complete', `Error loading STL: ${error.message}`);
+                showLoading(false);
+                hideProgressBar();
+            }
         });
 
         // Utility Functions
