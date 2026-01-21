@@ -1979,7 +1979,7 @@
             document.getElementById('eta-text').textContent = etaDisplay;
         }
 
-        function simplifyGeometryForPreview(geometry, targetVertices = 2000000) {
+        function simplifyGeometryForPreview(geometry, targetVertices = 300000) {
             const positions = geometry.attributes.position.array;
             const vertexCount = positions.length / 3;
             if (vertexCount <= targetVertices) {
@@ -2206,8 +2206,8 @@
 
                 // Auto-simplify extremely large models for rendering stability
                 let renderGeometry = geometry;
-                if (geometry.attributes.position.count > 5000000) {
-                    renderGeometry = simplifyGeometryForPreview(geometry, 2000000);
+                if (geometry.attributes.position.count > 750000) {
+                    renderGeometry = simplifyGeometryForPreview(geometry, 300000);
                     console.warn(`Preview simplified: ${geometry.attributes.position.count} → ${renderGeometry.attributes.position.count} vertices (stride ${renderGeometry.userData.previewSimplified?.stride})`);
                 }
                 
@@ -2222,6 +2222,7 @@
                 
                 // Store geometry
                 state.geometry = renderGeometry;
+                window.appState = state; // expose for dashboard and debugging
                 
                 // Create mesh and add to scene
                 const material = new THREE.MeshPhongMaterial({
@@ -2236,12 +2237,24 @@
                 
                 state.mesh = new THREE.Mesh(renderGeometry, material);
                 scene.add(state.mesh);
+
+                // Add bounding box helper for visibility on huge models
+                if (state.bboxHelper) {
+                    scene.remove(state.bboxHelper);
+                    state.bboxHelper = null;
+                }
+                if (renderGeometry.boundingBox) {
+                    const boxHelper = new THREE.Box3Helper(renderGeometry.boundingBox, 0x7c3aed);
+                    state.bboxHelper = boxHelper;
+                    scene.add(boxHelper);
+                }
                 
                 // Adjust camera
                 const size = new THREE.Vector3();
                 renderGeometry.boundingBox.getSize(size);
                 const maxDim = Math.max(size.x, size.y, size.z);
-                camera.position.set(maxDim, maxDim, maxDim);
+                const distance = maxDim * 2.2;
+                camera.position.set(distance, distance, distance);
                 controls.target.set(0, 0, 0);
                 controls.update();
                 

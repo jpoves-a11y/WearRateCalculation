@@ -273,11 +273,13 @@ class PerformanceDashboard {
             }
         }
 
+        const appState = typeof window !== 'undefined' ? (window.appState || window.state || state) : state;
+
         // Geometry stats
-        if (typeof state !== 'undefined' && state.geometry) {
-            const vertexCount = state.geometry.attributes.position.count;
-            const triangleCount = state.geometry.index ? 
-                state.geometry.index.count / 3 : 
+        if (appState && appState.geometry) {
+            const vertexCount = appState.geometry.attributes.position.count;
+            const triangleCount = appState.geometry.index ? 
+                appState.geometry.index.count / 3 : 
                 vertexCount / 3;
 
             document.getElementById('vertex-count').textContent = vertexCount.toLocaleString();
@@ -285,14 +287,14 @@ class PerformanceDashboard {
         }
 
         // Buffer pool stats
-        if (typeof state !== 'undefined' && state.memoryManager) {
-            const stats = state.memoryManager.getStats();
+        if (appState && appState.memoryManager) {
+            const stats = appState.memoryManager.getStats();
             document.getElementById('buffer-pool').textContent = `${stats.totalBuffers} buffers`;
         }
 
         // Web Worker status
-        if (typeof state !== 'undefined' && state.stlWorker) {
-            const status = state.stlWorker ? 'Active' : 'Inactive';
+        if (appState && appState.stlWorker !== undefined) {
+            const status = appState.stlWorker ? 'Active' : 'Inactive';
             document.getElementById('worker-status').textContent = status;
         }
     }
