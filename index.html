@@ -2040,9 +2040,12 @@
                     };
 
                     const getQuantized = (v) => {
+                        const qx = Math.round(v.x * precision) / precision;
+                        const qy = Math.round(v.y * precision) / precision;
+                        const qz = Math.round(v.z * precision) / precision;
                         const key = `${Math.round(v.x * precision)},${Math.round(v.y * precision)},${Math.round(v.z * precision)}`;
                         if (!keyToVertex.has(key)) {
-                            keyToVertex.set(key, { x: v.x, y: v.y, z: v.z });
+                            keyToVertex.set(key, { x: qx, y: qy, z: qz });
                         }
                         return keyToVertex.get(key);
                     };
