@@ -1691,11 +1691,19 @@
         volumetricScene.add(volumetricDirectionalLight);
 
         // Animation Loop
+        let frameCount = 0;
         function animate() {
             requestAnimationFrame(animate);
             controls.update();
             sphereControls.update();
             volumetricControls.update();
+            
+            // Debug render state occasionally
+            if (frameCount === 0 && state.mesh) {
+                console.log(`[RENDER] Scene children: ${scene.children.length}, mesh visible: ${state.mesh.visible}, mesh frustum test:`, camera.getWorldDirection(new THREE.Vector3()));
+            }
+            frameCount = (frameCount + 1) % 300; // Log every 5 seconds at 60fps
+            
             renderer.render(scene, camera);
             sphereRenderer.render(sphereScene, sphereCamera);
             volumetricRenderer.render(volumetricScene, volumetricCamera);
@@ -2126,14 +2134,25 @@
 
                         const readChunk = () => {
                             if (offset >= file.size) {
+                                // Combine chunks into single ArrayBuffer (critical fix)
                                 const combinedArray = new Uint8Array(file.size);
                                 let pos = 0;
                                 for (const chunk of chunks) {
                                     combinedArray.set(chunk, pos);
                                     pos += chunk.length;
                                 }
-                                // STLLoader expects a true ArrayBuffer; Uint8Array triggers DataView errors
-                                resolve(combinedArray.buffer);
+                                
+                                // Verify buffer integrity
+                                console.log(`[STREAMING] Combined buffer: size=${combinedArray.byteLength}, file.size=${file.size}, chunks=${chunks.length}`);
+                                if (combinedArray.byteLength !== file.size) {
+                                    console.warn(`[STREAMING] Uint8Array size mismatch! Got ${combinedArray.byteLength}, expected ${file.size}`);
+                                }
+                                
+                                // CRITICAL: Use buffer.slice() to get exact byteLength
+                                // Direct .buffer might have extra padding
+                                const properBuffer = combinedArray.buffer.slice(0, file.size);
+                                console.log(`[STREAMING] Final buffer: ${properBuffer.byteLength} bytes (should match ${file.size})`);
+                                resolve(properBuffer);
                                 return;
                             }
 
@@ -2145,11 +2164,15 @@
                                 
                                 // Update progress
                                 updateProgressBar(offset);
+                                console.log(`[STREAMING] Loaded chunk ${chunks.length}: ${chunkData.length} bytes, total: ${offset}/${file.size}`);
 
                                 readChunk();
                             };
 
-                            reader.onerror = () => reject(reader.error);
+                            reader.onerror = () => {
+                                console.error(`[STREAMING] FileReader error at offset ${offset}:`, reader.error);
+                                reject(reader.error);
+                            };
                             reader.readAsArrayBuffer(chunk);
                         };
 
@@ -2171,13 +2194,37 @@
                 }
 
                 const loader = new STLLoader();
+                console.log(`[PARSE] Starting STL parse with buffer size: ${arrayBuffer.byteLength} bytes`);
+                
+                const startParse = performance.now();
                 const geometry = loader.parse(arrayBuffer);
+                const parseDuration = performance.now() - startParse;
+                
+                console.log(`[PARSE] STL parsed in ${parseDuration.toFixed(1)}ms`);
+                console.log(`[PARSE] Geometry attributes:`, {
+                    positions: geometry.attributes.position?.count,
+                    normals: geometry.attributes.normal?.count,
+                    indices: geometry.index?.count,
+                    hasData: !!geometry.attributes.position?.array?.length
+                });
+                
+                if (!geometry.attributes.position || geometry.attributes.position.count === 0) {
+                    throw new Error('STLLoader returned empty geometry - no position data');
+                }
                 
                 // Center and scale geometry
                 geometry.computeBoundingBox();
                 const center = new THREE.Vector3();
                 geometry.boundingBox.getCenter(center);
                 geometry.translate(-center.x, -center.y, -center.z);
+                
+                console.log(`[GEOMETRY] After translate:`, {
+                    center: {x: center.x.toFixed(2), y: center.y.toFixed(2), z: center.z.toFixed(2)},
+                    boundingBox: {
+                        min: {x: geometry.boundingBox.min.x.toFixed(2), y: geometry.boundingBox.min.y.toFixed(2), z: geometry.boundingBox.min.z.toFixed(2)},
+                        max: {x: geometry.boundingBox.max.x.toFixed(2), y: geometry.boundingBox.max.y.toFixed(2), z: geometry.boundingBox.max.z.toFixed(2)}
+                    }
+                });
                 
                 // Compute normals
                 geometry.computeVertexNormals();
@@ -2197,15 +2244,19 @@
                 }
                 
                 state.mesh = new THREE.Mesh(geometry, material);
+                console.log(`[MESH] Created mesh, adding to scene. Children before: ${scene.children.length}`);
                 scene.add(state.mesh);
+                console.log(`[MESH] Mesh added. Children after: ${scene.children.length}`);
                 
                 // Adjust camera
                 const size = new THREE.Vector3();
                 geometry.boundingBox.getSize(size);
                 const maxDim = Math.max(size.x, size.y, size.z);
+                console.log(`[CAMERA] Size: ${size.x.toFixed(2)}, ${size.y.toFixed(2)}, ${size.z.toFixed(2)}, maxDim: ${maxDim.toFixed(2)}`);
                 camera.position.set(maxDim, maxDim, maxDim);
                 controls.target.set(0, 0, 0);
                 controls.update();
+                console.log(`[CAMERA] Camera positioned at (${maxDim.toFixed(2)}, ${maxDim.toFixed(2)}, ${maxDim.toFixed(2)})`);
                 
                 const perf = state.performanceMonitor?.endMeasure('STL-loading');
                 const memUsage = state.memoryManager?.getMemoryUsage();
@@ -2217,6 +2268,12 @@
                 enableButton('btn-isolate', true);
             } catch (error) {
                 console.error('Failed to load STL:', error);
+                console.error('Error stack:', error.stack);
+                console.error('Error details:', {
+                    message: error.message,
+                    name: error.name,
+                    type: typeof error
+                });
                 updateStatus('complete', `Error loading STL: ${error.message}`);
                 showLoading(false);
                 hideProgressBar();
