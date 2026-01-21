@@ -1599,16 +1599,26 @@
             document.getElementById('viewer-container').clientWidth / 
             document.getElementById('viewer-container').clientHeight,
             0.1,
-            1000
+            1000000  // Far plane increased for very large models
         );
         camera.position.set(50, 50, 50);
 
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        const renderer = new THREE.WebGLRenderer({ 
+            antialias: true,
+            powerPreference: 'high-performance',
+            precision: 'highp'
+        });
         renderer.setSize(
             document.getElementById('viewer-container').clientWidth,
             document.getElementById('viewer-container').clientHeight
         );
         document.getElementById('viewer-container').appendChild(renderer.domElement);
+        
+        // Log WebGL capabilities for large models
+        const gl = renderer.getContext();
+        console.log('[WEBGL] Max vertex attribs:', gl.getParameter(gl.MAX_VERTEX_ATTRIBS));
+        console.log('[WEBGL] Max texture size:', gl.getParameter(gl.MAX_TEXTURE_SIZE));
+        console.log('[WEBGL] Max viewport dims:', gl.getParameter(gl.MAX_VIEWPORT_DIMS));
 
         const controls = new OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
@@ -2247,11 +2257,25 @@
                 state.geometry = geometry;
                 
                 // Create mesh and add to scene
-                const material = new THREE.MeshPhongMaterial({
-                    color: 0x4299e1,
-                    flatShading: false,
-                    side: THREE.DoubleSide
-                });
+                // Use BasicMaterial for very large models to reduce GPU load
+                const vertexCount = geometry.attributes.position.count;
+                const usesBasicMaterial = vertexCount > 10000000; // 10M vertices threshold
+                
+                const material = usesBasicMaterial 
+                    ? new THREE.MeshBasicMaterial({
+                        color: 0x4299e1,
+                        side: THREE.DoubleSide,
+                        wireframe: false
+                      })
+                    : new THREE.MeshPhongMaterial({
+                        color: 0x4299e1,
+                        flatShading: false,
+                        side: THREE.DoubleSide
+                      });
+                
+                if (usesBasicMaterial) {
+                    console.log(`[MESH] Using BasicMaterial for ${vertexCount.toLocaleString()} vertices (reduces GPU load)`);
+                }
                 
                 if (state.mesh) {
                     scene.remove(state.mesh);
@@ -2259,6 +2283,7 @@
                 
                 state.mesh = new THREE.Mesh(geometry, material);
                 console.log(`[MESH] Created mesh, adding to scene. Children before: ${scene.children.length}`);
+                console.log(`[MESH] Vertex count: ${geometry.attributes.position.count}, Memory estimate: ${(geometry.attributes.position.count * 3 * 4 * 2 / 1024 / 1024).toFixed(2)} MB`);
                 scene.add(state.mesh);
                 console.log(`[MESH] Mesh added. Children after: ${scene.children.length}`);
                 
@@ -2267,6 +2292,15 @@
                 geometry.boundingBox.getSize(size);
                 const maxDim = Math.max(size.x, size.y, size.z);
                 console.log(`[CAMERA] Size: ${size.x.toFixed(2)}, ${size.y.toFixed(2)}, ${size.z.toFixed(2)}, maxDim: ${maxDim.toFixed(2)}`);
+                
+                // Ensure camera far plane can see the entire model
+                const cameraDistance = maxDim * 1.5;
+                if (camera.far < cameraDistance * 2) {
+                    camera.far = cameraDistance * 3;
+                    camera.updateProjectionMatrix();
+                    console.log(`[CAMERA] Adjusted far plane to ${camera.far.toFixed(2)} for large model`);
+                }
+                
                 camera.position.set(maxDim, maxDim, maxDim);
                 controls.target.set(0, 0, 0);
                 controls.update();
