@@ -410,6 +410,17 @@
                             ⏱️ <span id="eta-text">Calculating ETA...</span>
                         </div>
                     </div>
+
+                    <div class="mt-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                        <div class="flex items-center justify-between gap-3 mb-2">
+                            <div>
+                                <p class="text-sm font-semibold text-gray-700">Performance Tools</p>
+                                <p class="text-xs text-gray-500" id="precompress-hint">Applies quantization and vertex deduplication.</p>
+                            </div>
+                            <button id="btn-precompress" class="btn-secondary text-xs px-3 py-2" disabled>Manual Precompression</button>
+                        </div>
+                        <div class="text-xs text-gray-500" id="precompress-summary">Waiting for STL...</div>
+                    </div>
                 </div>
 
                 <div class="panel mb-6 fade-in" style="animation-delay: 0.2s;">
@@ -740,7 +751,8 @@
             // OPTIMIZATION FIELDS
             memoryManager: null,
             stlWorker: null,
-            performanceMonitor: null
+            performanceMonitor: null,
+            compressionInfo: null
         };
 
         // ========================================
@@ -1878,6 +1890,9 @@
             enableButton('btn-detect-wear', false);
             enableButton('btn-fit-sphere', false);
             enableButton('btn-calculate', false);
+            enableButton('btn-precompress', false);
+            setPrecompressSummary('Waiting for STL...');
+            document.getElementById('precompress-hint').textContent = 'Applies quantization and vertex deduplication.';
             
             console.log('Cleanup complete');
         }
@@ -1913,6 +1928,13 @@
             container.classList.add('hidden');
             if (progressState.updateInterval) {
                 clearInterval(progressState.updateInterval);
+            }
+        }
+
+        function setPrecompressSummary(text) {
+            const summary = document.getElementById('precompress-summary');
+            if (summary) {
+                summary.textContent = text;
             }
         }
 
@@ -1957,6 +1979,124 @@
             document.getElementById('eta-text').textContent = etaDisplay;
         }
 
+        async function runManualPrecompression() {
+            if (!state.geometry) {
+                updateStatus('complete', 'Load an STL before running precompression');
+                return;
+            }
+
+            const positions = state.geometry.attributes.position.array;
+            const originalVertices = positions.length / 3;
+            if (originalVertices === 0) {
+                updateStatus('complete', 'No geometry data available for precompression');
+                return;
+            }
+
+            showLoading(true);
+            updateStatus('processing', 'Applying manual precompression...');
+
+            const tolerance = 0.0005; // quantization grid size
+            const precision = 1 / tolerance;
+            const keyToVertex = new Map();
+            const newPositions = [];
+
+            const startTime = performance.now();
+
+            try {
+                for (let i = 0; i < positions.length; i += 9) {
+                    const v1 = {
+                        x: positions[i],
+                        y: positions[i + 1],
+                        z: positions[i + 2]
+                    };
+                    const v2 = {
+                        x: positions[i + 3],
+                        y: positions[i + 4],
+                        z: positions[i + 5]
+                    };
+                    const v3 = {
+                        x: positions[i + 6],
+                        y: positions[i + 7],
+                        z: positions[i + 8]
+                    };
+
+                    const getQuantized = (v) => {
+                        const key = `${Math.round(v.x * precision)},${Math.round(v.y * precision)},${Math.round(v.z * precision)}`;
+                        if (!keyToVertex.has(key)) {
+                            keyToVertex.set(key, { x: v.x, y: v.y, z: v.z });
+                        }
+                        return keyToVertex.get(key);
+                    };
+
+                    const q1 = getQuantized(v1);
+                    const q2 = getQuantized(v2);
+                    const q3 = getQuantized(v3);
+
+                    // Skip degenerate triangles created by quantization collapse
+                    if ((q1 === q2) || (q1 === q3) || (q2 === q3)) {
+                        continue;
+                    }
+
+                    newPositions.push(
+                        q1.x, q1.y, q1.z,
+                        q2.x, q2.y, q2.z,
+                        q3.x, q3.y, q3.z
+                    );
+                }
+
+                if (newPositions.length === 0) {
+                    updateStatus('complete', 'Precompression skipped: geometry collapsed with current tolerance');
+                    return;
+                }
+
+                const compressedGeometry = new THREE.BufferGeometry();
+                compressedGeometry.setAttribute('position', new THREE.Float32BufferAttribute(newPositions, 3));
+                compressedGeometry.computeVertexNormals();
+                compressedGeometry.computeBoundingBox();
+                compressedGeometry.computeBoundingSphere();
+
+                if (state.mesh) {
+                    state.mesh.geometry.dispose?.();
+                    state.mesh.geometry = compressedGeometry;
+                } else {
+                    const material = new THREE.MeshPhongMaterial({
+                        color: 0x4299e1,
+                        flatShading: false,
+                        side: THREE.DoubleSide
+                    });
+                    state.mesh = new THREE.Mesh(compressedGeometry, material);
+                    scene.add(state.mesh);
+                }
+
+                if (state.geometry && state.geometry.dispose) {
+                    state.geometry.dispose();
+                }
+                state.geometry = compressedGeometry;
+
+                const reducedVertices = newPositions.length / 3;
+                const reductionPercent = ((1 - reducedVertices / originalVertices) * 100).toFixed(1);
+                const duration = performance.now() - startTime;
+
+                state.compressionInfo = {
+                    originalVertices,
+                    reducedVertices,
+                    reductionPercent,
+                    tolerance
+                };
+
+                setPrecompressSummary(`Compressed ${originalVertices.toLocaleString()} → ${reducedVertices.toLocaleString()} vertices (${reductionPercent}% reduction)`);
+                document.getElementById('precompress-hint').textContent = 'Precompression applied (quantization + collapsed degenerate triangles).';
+
+                updateStatus('complete', `Precompression done in ${duration.toFixed(1)} ms (${reductionPercent}% fewer vertices)`);
+                window.dashboard?.logOperation?.('Precompression', duration);
+            } catch (error) {
+                console.error('Precompression failed:', error);
+                updateStatus('complete', `Precompression failed: ${error.message}`);
+            } finally {
+                showLoading(false);
+            }
+        }
+
         // File Upload Handler with Progress Tracking
         document.getElementById('file-input').addEventListener('change', async (event) => {
             const file = event.target.files[0];
@@ -1992,7 +2132,8 @@
                                     combinedArray.set(chunk, pos);
                                     pos += chunk.length;
                                 }
-                                resolve(combinedArray);
+                                // STLLoader expects a true ArrayBuffer; Uint8Array triggers DataView errors
+                                resolve(combinedArray.buffer);
                                 return;
                             }
 
@@ -2071,6 +2212,8 @@
                 updateStatus('complete', `STL loaded: ${geometry.attributes.position.count} vertices (${perf?.duration}) - Memory: ${memUsage}MB`);
                 showLoading(false);
                 hideProgressBar();
+                enableButton('btn-precompress', true);
+                setPrecompressSummary(`Ready: ${geometry.attributes.position.count.toLocaleString()} vertices. You can precompress before isolating.`);
                 enableButton('btn-isolate', true);
             } catch (error) {
                 console.error('Failed to load STL:', error);
@@ -2079,6 +2222,8 @@
                 hideProgressBar();
             }
         });
+
+        document.getElementById('btn-precompress').addEventListener('click', runManualPrecompression);
 
         // Utility Functions
         function updateStatus(type, text) {

@@ -8,6 +8,8 @@ class PerformanceDashboard {
         this.isVisible = false;
         this.container = null;
         this.updateInterval = null;
+        this.isMinimized = false;
+        this.iconButton = null;
     }
 
     /**
@@ -125,12 +127,40 @@ class PerformanceDashboard {
                 border-radius: 2px 2px 0 0;
                 transition: height 0.2s;
             }
+
+            #performance-dashboard.minimized {
+                display: none;
+            }
+
+            #performance-dashboard-icon {
+                position: fixed;
+                bottom: 20px;
+                right: 20px;
+                width: 44px;
+                height: 44px;
+                border-radius: 9999px;
+                background: linear-gradient(135deg, #2563eb, #7c3aed);
+                color: #e2e8f0;
+                display: none;
+                align-items: center;
+                justify-content: center;
+                font-weight: 700;
+                font-size: 16px;
+                cursor: pointer;
+                box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+                z-index: 9998;
+            }
+
+            #performance-dashboard-icon:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 14px 30px rgba(0, 0, 0, 0.35);
+            }
         </style>
 
         <div class="dashboard-header">
             <div class="dashboard-title">⚡ Performance</div>
-            <button class="dashboard-toggle" onclick="this.closest('#performance-dashboard').style.display=this.closest('#performance-dashboard').style.display==='none'?'block':'none'">
-                Hide
+            <button class="dashboard-toggle" id="dashboard-toggle-btn">
+                Minimize
             </button>
         </div>
 
@@ -182,6 +212,21 @@ class PerformanceDashboard {
 
         document.body.appendChild(dashboard);
         this.container = dashboard;
+
+        const icon = document.createElement('div');
+        icon.id = 'performance-dashboard-icon';
+        icon.title = 'Show performance dashboard';
+        icon.textContent = '⚡';
+        document.body.appendChild(icon);
+        this.iconButton = icon;
+
+        const toggleBtn = dashboard.querySelector('#dashboard-toggle-btn');
+        if (toggleBtn) {
+            toggleBtn.addEventListener('click', () => this.minimize());
+        }
+
+        icon.addEventListener('click', () => this.restore());
+        this.isVisible = true;
 
         // Start update loop
         this.startUpdates();
@@ -250,6 +295,28 @@ class PerformanceDashboard {
             const status = state.stlWorker ? 'Active' : 'Inactive';
             document.getElementById('worker-status').textContent = status;
         }
+    }
+
+    minimize() {
+        if (!this.container) return;
+        this.container.style.display = 'none';
+        this.container.classList.add('minimized');
+        if (this.iconButton) {
+            this.iconButton.style.display = 'flex';
+        }
+        this.isMinimized = true;
+        this.isVisible = false;
+    }
+
+    restore() {
+        if (!this.container) return;
+        this.container.style.display = 'block';
+        this.container.classList.remove('minimized');
+        if (this.iconButton) {
+            this.iconButton.style.display = 'none';
+        }
+        this.isMinimized = false;
+        this.isVisible = true;
     }
 
     /**
