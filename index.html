@@ -2257,9 +2257,9 @@
                 state.geometry = geometry;
                 
                 // Create mesh and add to scene
-                // Use BasicMaterial for very large models to reduce GPU load
+                // Use BasicMaterial for extremely large models to reduce GPU load
                 const vertexCount = geometry.attributes.position.count;
-                const usesBasicMaterial = vertexCount > 30000000; // 30M vertices threshold (allows Phong for 20M models)
+                const usesBasicMaterial = vertexCount > 50000000; // 50M vertices threshold (allows Phong up to 50M)
                 
                 const material = usesBasicMaterial 
                     ? new THREE.MeshBasicMaterial({
