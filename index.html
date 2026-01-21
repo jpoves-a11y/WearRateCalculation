@@ -1752,33 +1752,6 @@
         function cleanupPreviousAnalysis() {
             console.log('=== Cleaning up previous analysis ===');
             
-            // Remove mesh completely and dispose resources
-            if (state.mesh) {
-                scene.remove(state.mesh);
-                if (state.mesh.geometry) {
-                    state.mesh.geometry.dispose();
-                }
-                if (state.mesh.material) {
-                    if (Array.isArray(state.mesh.material)) {
-                        state.mesh.material.forEach(m => m.dispose?.());
-                    } else {
-                        state.mesh.material.dispose();
-                    }
-                }
-                state.mesh = null;
-            }
-            
-            // Dispose old geometry
-            if (state.geometry && state.geometry !== state.mesh?.geometry) {
-                state.geometry.dispose?.();
-            }
-            
-            // Remove bounding box helper
-            if (state.bboxHelper) {
-                scene.remove(state.bboxHelper);
-                state.bboxHelper = null;
-            }
-            
             // Remove center markers (from dual-sphere method)
             if (state.unwornCenterMarker) {
                 scene.remove(state.unwornCenterMarker);
@@ -2006,12 +1979,6 @@
             document.getElementById('eta-text').textContent = etaDisplay;
         }
 
-        function simplifyGeometryForPreview(geometry, targetVertices = 200000) {
-            // Disabled: preview simplification was corrupting large geometries
-            // Large models should load unmodified; user can trigger manual precompression
-            return geometry;
-        }
-
         async function runManualPrecompression() {
             if (!state.geometry) {
                 updateStatus('complete', 'Load an STL before running precompression');
@@ -2203,42 +2170,20 @@
                     });
                 }
 
-                // Validate ArrayBuffer integrity
-                console.log(`ArrayBuffer size: ${arrayBuffer.byteLength} bytes, expected: ${file.size}`);
-                if (arrayBuffer.byteLength === 0) {
-                    throw new Error('ArrayBuffer is empty after loading');
-                }
-
                 const loader = new STLLoader();
-                let geometry = null;
-                try {
-                    geometry = loader.parse(arrayBuffer);
-                } catch (parseError) {
-                    throw new Error(`STL parsing failed: ${parseError.message}`);
-                }
-
-                if (!geometry || !geometry.attributes.position) {
-                    throw new Error('Parsed geometry is invalid or missing position attributes');
-                }
-
-                console.log(`Raw geometry: ${geometry.attributes.position.count} vertices`);
-
-                // NO simplification: render the full mesh as-is
-                // User can call manual precompression if needed
-                let renderGeometry = geometry;
+                const geometry = loader.parse(arrayBuffer);
                 
                 // Center and scale geometry
-                renderGeometry.computeBoundingBox();
+                geometry.computeBoundingBox();
                 const center = new THREE.Vector3();
-                renderGeometry.boundingBox.getCenter(center);
-                renderGeometry.translate(-center.x, -center.y, -center.z);
+                geometry.boundingBox.getCenter(center);
+                geometry.translate(-center.x, -center.y, -center.z);
                 
                 // Compute normals
-                renderGeometry.computeVertexNormals();
+                geometry.computeVertexNormals();
                 
                 // Store geometry
-                state.geometry = renderGeometry;
-                window.appState = state; // expose for dashboard and debugging
+                state.geometry = geometry;
                 
                 // Create mesh and add to scene
                 const material = new THREE.MeshPhongMaterial({
@@ -2251,29 +2196,25 @@
                     scene.remove(state.mesh);
                 }
                 
-                state.mesh = new THREE.Mesh(renderGeometry, material);
+                state.mesh = new THREE.Mesh(geometry, material);
                 scene.add(state.mesh);
-                
-                // Force renderer update
-                renderer.render(scene, camera);
-
                 
                 // Adjust camera
                 const size = new THREE.Vector3();
-                renderGeometry.boundingBox.getSize(size);
+                geometry.boundingBox.getSize(size);
                 const maxDim = Math.max(size.x, size.y, size.z);
-                const distance = maxDim * 2.2;
-                camera.position.set(distance, distance, distance);
+                camera.position.set(maxDim, maxDim, maxDim);
                 controls.target.set(0, 0, 0);
                 controls.update();
                 
                 const perf = state.performanceMonitor?.endMeasure('STL-loading');
                 const memUsage = state.memoryManager?.getMemoryUsage();
-                const summaryVertices = renderGeometry.attributes.position.count.toLocaleString();
-                updateStatus('complete', `STL loaded: ${summaryVertices} vertices (${perf?.duration}) - Memory: ${memUsage}MB`);
-                if (!renderGeometry.userData.previewSimplified) {
-                    setPrecompressSummary(`Ready: ${renderGeometry.attributes.position.count.toLocaleString()} vertices. Run manual precompression if needed.`);
-                }
+                updateStatus('complete', `STL loaded: ${geometry.attributes.position.count} vertices (${perf?.duration}) - Memory: ${memUsage}MB`);
+                showLoading(false);
+                hideProgressBar();
+                enableButton('btn-precompress', true);
+                setPrecompressSummary(`Ready: ${geometry.attributes.position.count.toLocaleString()} vertices. You can precompress before isolating.`);
+                enableButton('btn-isolate', true);
             } catch (error) {
                 console.error('Failed to load STL:', error);
                 updateStatus('complete', `Error loading STL: ${error.message}`);
