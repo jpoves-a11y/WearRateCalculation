@@ -2259,7 +2259,7 @@
                 // Create mesh and add to scene
                 // Use BasicMaterial for very large models to reduce GPU load
                 const vertexCount = geometry.attributes.position.count;
-                const usesBasicMaterial = vertexCount > 10000000; // 10M vertices threshold
+                const usesBasicMaterial = vertexCount > 30000000; // 30M vertices threshold (allows Phong for 20M models)
                 
                 const material = usesBasicMaterial 
                     ? new THREE.MeshBasicMaterial({
@@ -2275,6 +2275,8 @@
                 
                 if (usesBasicMaterial) {
                     console.log(`[MESH] Using BasicMaterial for ${vertexCount.toLocaleString()} vertices (reduces GPU load)`);
+                } else {
+                    console.log(`[MESH] Using PhongMaterial with lighting for ${vertexCount.toLocaleString()} vertices`);
                 }
                 
                 if (state.mesh) {
@@ -2372,6 +2374,7 @@
             const normals = state.geometry.attributes.normal.array;
             
             // Step 1: Calculate geometric centroid
+            console.log('[ISOLATE] Step 1: Calculating centroid...');
             const centroid = new THREE.Vector3(0, 0, 0);
             const vertexCount = positions.length / 3;
             
@@ -2384,11 +2387,20 @@
             
             console.log(`Centroid: (${centroid.x.toFixed(2)}, ${centroid.y.toFixed(2)}, ${centroid.z.toFixed(2)})`);
             
-            // Step 2: Calculate distances to centroid for all faces
+            // Step 2: Calculate distances to centroid for all faces (CHUNKED)
+            console.log('[ISOLATE] Step 2: Processing faces in chunks...');
             const faceCount = positions.length / 9;
             const faceData = [];
+            const chunkSize = 100000; // Process 100k faces at a time
+            let processedFaces = 0;
             
             for (let i = 0; i < positions.length; i += 9) {
+                // Yield control every chunkSize faces to prevent UI freeze
+                if (processedFaces > 0 && processedFaces % chunkSize === 0) {
+                    updateStatus('processing', `Processing faces: ${processedFaces.toLocaleString()}/${faceCount.toLocaleString()} (${(processedFaces/faceCount*100).toFixed(1)}%)`);
+                    await new Promise(resolve => setTimeout(resolve, 0));
+                }
+                
                 const v1 = new THREE.Vector3(positions[i], positions[i + 1], positions[i + 2]);
                 const v2 = new THREE.Vector3(positions[i + 3], positions[i + 4], positions[i + 5]);
                 const v3 = new THREE.Vector3(positions[i + 6], positions[i + 7], positions[i + 8]);
@@ -2410,9 +2422,14 @@
                     distance: distanceToCentroid,
                     center: faceCenter
                 });
+                
+                processedFaces++;
             }
             
+            console.log(`[ISOLATE] Processed ${faceCount.toLocaleString()} faces`);
+            
             // Step 3: Filter inner surface using multiple criteria
+            console.log('[ISOLATE] Step 3: Filtering inner surface candidates...');
             // Inner surface should be: concave (dot > threshold) AND within distance range
             const distances = faceData.map(f => f.distance);
             distances.sort((a, b) => a - b);
@@ -2535,6 +2552,7 @@
             
             // CRITICAL FIX v3.6: Store filtered inner surface triangles for consistent use
             // This ensures volumetric calculation and visualization use the exact same triangle set
+            console.log('[ISOLATE] Step 6: Building final triangle set...');
             state.filteredInnerTriangles = [];
             for (const faceIdx of innerFaces) {
                 const baseIdx = faceIdx * 9;
