@@ -1752,6 +1752,33 @@
         function cleanupPreviousAnalysis() {
             console.log('=== Cleaning up previous analysis ===');
             
+            // Remove mesh completely and dispose resources
+            if (state.mesh) {
+                scene.remove(state.mesh);
+                if (state.mesh.geometry) {
+                    state.mesh.geometry.dispose();
+                }
+                if (state.mesh.material) {
+                    if (Array.isArray(state.mesh.material)) {
+                        state.mesh.material.forEach(m => m.dispose?.());
+                    } else {
+                        state.mesh.material.dispose();
+                    }
+                }
+                state.mesh = null;
+            }
+            
+            // Dispose old geometry
+            if (state.geometry && state.geometry !== state.mesh?.geometry) {
+                state.geometry.dispose?.();
+            }
+            
+            // Remove bounding box helper
+            if (state.bboxHelper) {
+                scene.remove(state.bboxHelper);
+                state.bboxHelper = null;
+            }
+            
             // Remove center markers (from dual-sphere method)
             if (state.unwornCenterMarker) {
                 scene.remove(state.unwornCenterMarker);
@@ -2203,14 +2230,35 @@
                     });
                 }
 
+                // Validate ArrayBuffer integrity
+                console.log(`ArrayBuffer size: ${arrayBuffer.byteLength} bytes, expected: ${file.size}`);
+                if (arrayBuffer.byteLength === 0) {
+                    throw new Error('ArrayBuffer is empty after loading');
+                }
+
                 const loader = new STLLoader();
-                const geometry = loader.parse(arrayBuffer);
+                let geometry = null;
+                try {
+                    geometry = loader.parse(arrayBuffer);
+                } catch (parseError) {
+                    throw new Error(`STL parsing failed: ${parseError.message}`);
+                }
+
+                if (!geometry || !geometry.attributes.position) {
+                    throw new Error('Parsed geometry is invalid or missing position attributes');
+                }
+
+                console.log(`Raw geometry: ${geometry.attributes.position.count} vertices`);
 
                 // Auto-simplify extremely large models for rendering stability
                 let renderGeometry = geometry;
                 if (geometry.attributes.position.count > 400000) {
                     renderGeometry = simplifyGeometryForPreview(geometry, 200000);
                     console.warn(`Preview simplified: ${geometry.attributes.position.count} → ${renderGeometry.attributes.position.count} vertices (stride ${renderGeometry.userData.previewSimplified?.stride})`);
+                    // Dispose original if simplified
+                    if (geometry !== renderGeometry) {
+                        geometry.dispose?.();
+                    }
                 }
                 
                 // Center and scale geometry
@@ -2239,6 +2287,9 @@
                 
                 state.mesh = new THREE.Mesh(renderGeometry, material);
                 scene.add(state.mesh);
+                
+                // Log mesh details for debugging
+                console.log(`Mesh created: vertices=${renderGeometry.attributes.position.count}, meshPosition=${state.mesh.position.toArray()}, meshVisible=${state.mesh.visible}, sceneChildren=${scene.children.length}`);
 
                 // Add bounding box helper for visibility on huge models
                 if (state.bboxHelper) {
@@ -2246,10 +2297,16 @@
                     state.bboxHelper = null;
                 }
                 if (renderGeometry.boundingBox) {
+                    console.log(`Bounding box: min=${renderGeometry.boundingBox.min.toArray()}, max=${renderGeometry.boundingBox.max.toArray()}`);
                     const boxHelper = new THREE.Box3Helper(renderGeometry.boundingBox, 0x7c3aed);
                     state.bboxHelper = boxHelper;
                     scene.add(boxHelper);
                 }
+                
+                // Force renderer update
+                renderer.render(scene, camera);
+                console.log(`Render forced, scene updated`);
+
                 
                 // Adjust camera
                 const size = new THREE.Vector3();
