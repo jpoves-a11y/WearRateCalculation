@@ -1979,21 +1979,23 @@
             document.getElementById('eta-text').textContent = etaDisplay;
         }
 
-        function simplifyGeometryForPreview(geometry, targetVertices = 300000) {
+        function simplifyGeometryForPreview(geometry, targetVertices = 200000) {
             const positions = geometry.attributes.position.array;
             const vertexCount = positions.length / 3;
             if (vertexCount <= targetVertices) {
                 return geometry;
             }
 
-            // Keep one of every N triangles to build a lighter preview
-            const stride = Math.max(1, Math.floor(vertexCount / targetVertices));
+            // Sample triangles uniformly to keep topology visually coherent
+            const triangleCount = positions.length / 9;
+            const targetTriangles = Math.max(1, Math.floor(targetVertices / 3));
+            const strideTriangles = Math.max(1, Math.floor(triangleCount / targetTriangles));
             const sampled = [];
-            for (let i = 0; i < positions.length; i += stride * 3) {
+            for (let i = 0; i < positions.length; i += strideTriangles * 9) {
                 sampled.push(
                     positions[i], positions[i + 1], positions[i + 2],
-                    positions[i + 3] ?? positions[i], positions[i + 4] ?? positions[i + 1], positions[i + 5] ?? positions[i + 2],
-                    positions[i + 6] ?? positions[i], positions[i + 7] ?? positions[i + 1], positions[i + 8] ?? positions[i + 2]
+                    positions[i + 3], positions[i + 4], positions[i + 5],
+                    positions[i + 6], positions[i + 7], positions[i + 8]
                 );
             }
 
@@ -2005,7 +2007,7 @@
             simplifiedGeometry.userData.previewSimplified = {
                 originalVertices: vertexCount,
                 retainedVertices: sampled.length / 3,
-                stride
+                stride: strideTriangles
             };
             return simplifiedGeometry;
         }
@@ -2206,8 +2208,8 @@
 
                 // Auto-simplify extremely large models for rendering stability
                 let renderGeometry = geometry;
-                if (geometry.attributes.position.count > 750000) {
-                    renderGeometry = simplifyGeometryForPreview(geometry, 300000);
+                if (geometry.attributes.position.count > 400000) {
+                    renderGeometry = simplifyGeometryForPreview(geometry, 200000);
                     console.warn(`Preview simplified: ${geometry.attributes.position.count} → ${renderGeometry.attributes.position.count} vertices (stride ${renderGeometry.userData.previewSimplified?.stride})`);
                 }
                 
@@ -2263,7 +2265,7 @@
                 const summaryVertices = renderGeometry.userData.previewSimplified ? `${renderGeometry.attributes.position.count.toLocaleString()} (preview)` : renderGeometry.attributes.position.count.toLocaleString();
                 updateStatus('complete', `STL loaded: ${summaryVertices} vertices (${perf?.duration}) - Memory: ${memUsage}MB`);
                 if (renderGeometry.userData.previewSimplified) {
-                    setPrecompressSummary(`Preview simplified ${renderGeometry.userData.previewSimplified.originalVertices.toLocaleString()} → ${renderGeometry.userData.previewSimplified.retainedVertices.toLocaleString()} vertices (stride ${renderGeometry.userData.previewSimplified.stride}). Run precompression for a tighter mesh.`);
+                    setPrecompressSummary(`Preview simplified ${renderGeometry.userData.previewSimplified.originalVertices.toLocaleString()} → ${renderGeometry.userData.previewSimplified.retainedVertices.toLocaleString()} vertices (stride ${renderGeometry.userData.previewSimplified.stride}). Run manual precompression to reduce further.`);
                 }
                 showLoading(false);
                 hideProgressBar();
