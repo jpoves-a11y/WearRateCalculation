@@ -2007,36 +2007,9 @@
         }
 
         function simplifyGeometryForPreview(geometry, targetVertices = 200000) {
-            const positions = geometry.attributes.position.array;
-            const vertexCount = positions.length / 3;
-            if (vertexCount <= targetVertices) {
-                return geometry;
-            }
-
-            // Sample triangles uniformly to keep topology visually coherent
-            const triangleCount = positions.length / 9;
-            const targetTriangles = Math.max(1, Math.floor(targetVertices / 3));
-            const strideTriangles = Math.max(1, Math.floor(triangleCount / targetTriangles));
-            const sampled = [];
-            for (let i = 0; i < positions.length; i += strideTriangles * 9) {
-                sampled.push(
-                    positions[i], positions[i + 1], positions[i + 2],
-                    positions[i + 3], positions[i + 4], positions[i + 5],
-                    positions[i + 6], positions[i + 7], positions[i + 8]
-                );
-            }
-
-            const simplifiedGeometry = new THREE.BufferGeometry();
-            simplifiedGeometry.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(sampled), 3));
-            simplifiedGeometry.computeVertexNormals();
-            simplifiedGeometry.computeBoundingBox();
-            simplifiedGeometry.computeBoundingSphere();
-            simplifiedGeometry.userData.previewSimplified = {
-                originalVertices: vertexCount,
-                retainedVertices: sampled.length / 3,
-                stride: strideTriangles
-            };
-            return simplifiedGeometry;
+            // Disabled: preview simplification was corrupting large geometries
+            // Large models should load unmodified; user can trigger manual precompression
+            return geometry;
         }
 
         async function runManualPrecompression() {
@@ -2250,16 +2223,9 @@
 
                 console.log(`Raw geometry: ${geometry.attributes.position.count} vertices`);
 
-                // Auto-simplify extremely large models for rendering stability
+                // NO simplification: render the full mesh as-is
+                // User can call manual precompression if needed
                 let renderGeometry = geometry;
-                if (geometry.attributes.position.count > 400000) {
-                    renderGeometry = simplifyGeometryForPreview(geometry, 200000);
-                    console.warn(`Preview simplified: ${geometry.attributes.position.count} → ${renderGeometry.attributes.position.count} vertices (stride ${renderGeometry.userData.previewSimplified?.stride})`);
-                    // Dispose original if simplified
-                    if (geometry !== renderGeometry) {
-                        geometry.dispose?.();
-                    }
-                }
                 
                 // Center and scale geometry
                 renderGeometry.computeBoundingBox();
@@ -2288,24 +2254,8 @@
                 state.mesh = new THREE.Mesh(renderGeometry, material);
                 scene.add(state.mesh);
                 
-                // Log mesh details for debugging
-                console.log(`Mesh created: vertices=${renderGeometry.attributes.position.count}, meshPosition=${state.mesh.position.toArray()}, meshVisible=${state.mesh.visible}, sceneChildren=${scene.children.length}`);
-
-                // Add bounding box helper for visibility on huge models
-                if (state.bboxHelper) {
-                    scene.remove(state.bboxHelper);
-                    state.bboxHelper = null;
-                }
-                if (renderGeometry.boundingBox) {
-                    console.log(`Bounding box: min=${renderGeometry.boundingBox.min.toArray()}, max=${renderGeometry.boundingBox.max.toArray()}`);
-                    const boxHelper = new THREE.Box3Helper(renderGeometry.boundingBox, 0x7c3aed);
-                    state.bboxHelper = boxHelper;
-                    scene.add(boxHelper);
-                }
-                
                 // Force renderer update
                 renderer.render(scene, camera);
-                console.log(`Render forced, scene updated`);
 
                 
                 // Adjust camera
@@ -2319,18 +2269,11 @@
                 
                 const perf = state.performanceMonitor?.endMeasure('STL-loading');
                 const memUsage = state.memoryManager?.getMemoryUsage();
-                const summaryVertices = renderGeometry.userData.previewSimplified ? `${renderGeometry.attributes.position.count.toLocaleString()} (preview)` : renderGeometry.attributes.position.count.toLocaleString();
+                const summaryVertices = renderGeometry.attributes.position.count.toLocaleString();
                 updateStatus('complete', `STL loaded: ${summaryVertices} vertices (${perf?.duration}) - Memory: ${memUsage}MB`);
-                if (renderGeometry.userData.previewSimplified) {
-                    setPrecompressSummary(`Preview simplified ${renderGeometry.userData.previewSimplified.originalVertices.toLocaleString()} → ${renderGeometry.userData.previewSimplified.retainedVertices.toLocaleString()} vertices (stride ${renderGeometry.userData.previewSimplified.stride}). Run manual precompression to reduce further.`);
-                }
-                showLoading(false);
-                hideProgressBar();
-                enableButton('btn-precompress', true);
                 if (!renderGeometry.userData.previewSimplified) {
-                    setPrecompressSummary(`Ready: ${renderGeometry.attributes.position.count.toLocaleString()} vertices. You can precompress before isolating.`);
+                    setPrecompressSummary(`Ready: ${renderGeometry.attributes.position.count.toLocaleString()} vertices. Run manual precompression if needed.`);
                 }
-                enableButton('btn-isolate', true);
             } catch (error) {
                 console.error('Failed to load STL:', error);
                 updateStatus('complete', `Error loading STL: ${error.message}`);
