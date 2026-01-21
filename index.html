@@ -2003,7 +2003,18 @@
             showLoading(true);
             updateStatus('processing', 'Applying manual precompression...');
 
-            const tolerance = 0.0005; // quantization grid size
+            // Compute bounding box to get adaptive tolerance
+            if (!state.geometry.boundingBox) {
+                state.geometry.computeBoundingBox();
+            }
+            const bbox = state.geometry.boundingBox;
+            const size = new THREE.Vector3();
+            bbox.getSize(size);
+            const maxDim = Math.max(size.x, size.y, size.z);
+            
+            // Adaptive tolerance: 0.1% of max dimension (balance quality vs compression)
+            const tolerance = maxDim * 0.001; // 0.1% of max dimension
+            console.log(`[PRECOMPRESSION] Model size: ${maxDim.toFixed(2)}mm, tolerance: ${tolerance.toFixed(4)}mm`);
             const precision = 1 / tolerance;
             const keyToVertex = new Map();
             const newPositions = [];

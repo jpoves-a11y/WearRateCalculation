@@ -305,7 +305,7 @@ function checkBrowserCapabilities() {
     console.log('🌐 Browser Capabilities:\n');
     
     const capabilities = {
-        'ES6 Modules': typeof import !== 'undefined',
+        'ES6 Modules': true, // Available in modern browsers
         'Web Workers': typeof Worker !== 'undefined',
         'WebGL': !!document.createElement('canvas').getContext('webgl2'),
         'FileReader': typeof FileReader !== 'undefined',

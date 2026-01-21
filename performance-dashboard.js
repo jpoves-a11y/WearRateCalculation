@@ -337,6 +337,19 @@ class PerformanceDashboard {
     }
 }
 
+// Suppress external API errors
+window.addEventListener('error', (event) => {
+    if (event.message && (event.message.includes('altai.click') || event.message.includes('contentScript'))) {
+        event.preventDefault();
+    }
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+    if (event.reason && event.reason.message && (event.reason.message.includes('ERR_NAME_NOT_RESOLVED') || event.reason.message.includes('Failed to fetch'))) {
+        event.preventDefault();
+    }
+});
+
 // Auto-initialize when page loads
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
