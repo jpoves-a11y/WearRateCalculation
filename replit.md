@@ -9,7 +9,7 @@ This project is a professional standalone HTML web application designed for the 
 - Language: English (all UI and outputs)
 - Professional medical-grade interface required
 - Standalone HTML preferred (no build step)
-- Clear visual distinction between worn/unworn zones
+- Clear visual distinction between worn/unworn zones 
 
 ## System Architecture
 
